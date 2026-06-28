@@ -1,0 +1,15 @@
+.env
+*.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+logs/
+data/
+.DS_Store
+derby.log
+metastore_db/
+*.pem
+*.key
+secrets/
