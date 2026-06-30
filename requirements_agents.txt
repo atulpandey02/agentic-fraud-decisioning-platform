@@ -1,0 +1,14 @@
+# =============================================================
+# AGENTS — Phase 3+
+# Install with: pip install -r requirements-agents.txt
+# (after requirements.txt — these build on the core deps)
+# =============================================================
+langgraph==0.0.55
+langchain-groq==0.1.3
+langsmith==0.1.63
+# Note: langgraph 0.0.55 pulls in langchain-core>=0.2,<0.3
+# which conflicts with langchain==0.1.20 (needs core<0.2).
+# We intentionally do NOT pin top-level "langchain" here —
+# langgraph + langchain-core + langchain-groq is enough for
+# Phase 3-4. If full langchain (agents, chains) is needed later,
+# resolve version compatibility at that time, not now.

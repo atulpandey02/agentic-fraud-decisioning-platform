@@ -30,7 +30,8 @@ services:
   # PLAINTEXT_INTERNAL → inter-container comms (kafka:29092)
   # CONTROLLER    → KRaft metadata (kafka:29093)
   # user_id as message key → all events per user to same partition
-  # 3 partitions = 3 parallel Spark tasks
+  # 12 partitions = 12 parallel Spark tasks (bumped from 3 — at
+  # 10,000 users, more partitions show real parallel consumption)
   # retention 7 days — Snowflake is the audit system of record
   # -----------------------------------------------------------
   kafka:
@@ -53,7 +54,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_NUM_PARTITIONS: 12
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_MS: 604800000
@@ -118,7 +119,9 @@ services:
 
   # -----------------------------------------------------------
   # SPARK WORKER
-  # 4g memory, 2 cores — matches 3 partitions, leaves headroom
+  # 4g memory, 2 cores — deliberately constrained relative to
+  # 12 partitions and 10M-row backfill so shuffle spill actually
+  # happens; this is the point, not a problem to fix
   # Waits for master healthcheck before starting
   # -----------------------------------------------------------
   spark-worker:

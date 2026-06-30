@@ -1,0 +1,1588 @@
+{
+  "df743087-ce12-4607-8bba-eef39eb2a2df": {
+    "user_id": "df743087-ce12-4607-8bba-eef39eb2a2df",
+    "full_name": "Allison Hill",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.736867,
+    "home_longitude": -74.001463,
+    "avg_transaction_amt": 42.0,
+    "stddev_transaction_amt": 21.88,
+    "avg_daily_txn_count": 2.89,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "dddfd905-53ae-463b-83e2-df941d11c3cd",
+      "f042f564-69fa-42d6-9dc4-8c66e552704f"
+    ]
+  },
+  "b8c769ec-6656-488c-b9e4-bd09d6f40765": {
+    "user_id": "b8c769ec-6656-488c-b9e4-bd09d6f40765",
+    "full_name": "Noah Rhodes",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.329984,
+    "home_longitude": -71.043912,
+    "avg_transaction_amt": 15.89,
+    "stddev_transaction_amt": 7.19,
+    "avg_daily_txn_count": 2.01,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "a52427ef-1c92-4abf-8bd5-33d50d811276",
+      "ae162069-ad14-4032-8d60-35c24128a66b"
+    ]
+  },
+  "42d92cb5-487e-48aa-9d43-e6e0594c3f59": {
+    "user_id": "42d92cb5-487e-48aa-9d43-e6e0594c3f59",
+    "full_name": "Angie Henderson",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.870361,
+    "home_longitude": -87.652013,
+    "avg_transaction_amt": 28.48,
+    "stddev_transaction_amt": 7.78,
+    "avg_daily_txn_count": 2.74,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "7f97423e-6656-4f27-b27b-bc63b35b441a"
+    ]
+  },
+  "dc7248c3-a4d8-4c04-9d70-ee6e9812ac98": {
+    "user_id": "dc7248c3-a4d8-4c04-9d70-ee6e9812ac98",
+    "full_name": "Daniel Wagner",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.582652,
+    "home_longitude": -122.377755,
+    "avg_transaction_amt": 200.98,
+    "stddev_transaction_amt": 47.42,
+    "avg_daily_txn_count": 3.68,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "a148498b-b3db-4926-a8ad-0339ba6f808f",
+      "db3e3c52-a8e2-48a1-9c43-0d9e4d9c82ac",
+      "5c8f9b37-247e-491f-af50-4f626f2fe6ee"
+    ]
+  },
+  "58358ce8-90e3-4154-baf7-fe1bfeb18303": {
+    "user_id": "58358ce8-90e3-4154-baf7-fe1bfeb18303",
+    "full_name": "Cristian Santos",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.782635,
+    "home_longitude": -122.398943,
+    "avg_transaction_amt": 117.85,
+    "stddev_transaction_amt": 24.46,
+    "avg_daily_txn_count": 4.21,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "0965679a-a95c-4a65-a5cc-1e6e46ebc2d0"
+    ]
+  },
+  "382f1770-074b-4d63-897e-992de2308421": {
+    "user_id": "382f1770-074b-4d63-897e-992de2308421",
+    "full_name": "Connie Lawrence",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.690597,
+    "home_longitude": -73.992432,
+    "avg_transaction_amt": 101.85,
+    "stddev_transaction_amt": 39.63,
+    "avg_daily_txn_count": 5.42,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "76abe849-59b8-4e7e-860d-b29a6ed45849"
+    ]
+  },
+  "2c5f453f-5944-4ad9-a712-f6a89c2edd2b": {
+    "user_id": "2c5f453f-5944-4ad9-a712-f6a89c2edd2b",
+    "full_name": "Abigail Shaffer",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.726298,
+    "home_longitude": -74.002586,
+    "avg_transaction_amt": 25.66,
+    "stddev_transaction_amt": 11.7,
+    "avg_daily_txn_count": 2.4,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "c2eda1ca-859b-4036-8d5b-2106a76ed71e",
+      "7f5de81a-7834-409f-99e8-f2f4da6910ce",
+      "454a22b0-53a3-4382-8753-14709c50e95e"
+    ]
+  },
+  "a4e2038b-c490-478a-b09f-1ee7cc07de3b": {
+    "user_id": "a4e2038b-c490-478a-b09f-1ee7cc07de3b",
+    "full_name": "Gina Moore",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.767461,
+    "home_longitude": -84.353715,
+    "avg_transaction_amt": 26.38,
+    "stddev_transaction_amt": 14.9,
+    "avg_daily_txn_count": 2.28,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "c9c8403e-06d5-4454-9261-9872c63234fc",
+      "8b5eb30b-03d4-4e7b-a9e2-e792b770d241"
+    ]
+  },
+  "cbdd5398-cd48-4891-b6f7-800cb527c7db": {
+    "user_id": "cbdd5398-cd48-4891-b6f7-800cb527c7db",
+    "full_name": "Gabrielle Davis",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.754114,
+    "home_longitude": -73.999282,
+    "avg_transaction_amt": 39.65,
+    "stddev_transaction_amt": 13.05,
+    "avg_daily_txn_count": 1.8,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "8516fe7e-5dc3-4dd3-a0ad-171252b1da2f"
+    ]
+  },
+  "dea6f9a8-b1ea-4411-a148-92a480506306": {
+    "user_id": "dea6f9a8-b1ea-4411-a148-92a480506306",
+    "full_name": "Ryan Munoz",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.715688,
+    "home_longitude": -105.015637,
+    "avg_transaction_amt": 34.66,
+    "stddev_transaction_amt": 8.96,
+    "avg_daily_txn_count": 2.83,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "051fd0bb-ea4a-45d6-b0a5-c71ff9d1457d"
+    ]
+  },
+  "a1cc2251-e46a-472f-9b45-27419b69b206": {
+    "user_id": "a1cc2251-e46a-472f-9b45-27419b69b206",
+    "full_name": "Monica Herrera",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.655933,
+    "home_longitude": -122.368267,
+    "avg_transaction_amt": 99.76,
+    "stddev_transaction_amt": 25.71,
+    "avg_daily_txn_count": 4.33,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "cd27093e-d7c7-4e51-953c-bb790ca0a633"
+    ]
+  },
+  "549febb0-104c-4346-80bc-fb41f3b9f380": {
+    "user_id": "549febb0-104c-4346-80bc-fb41f3b9f380",
+    "full_name": "Jamie Arnold",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.223553,
+    "home_longitude": -97.754938,
+    "avg_transaction_amt": 16.41,
+    "stddev_transaction_amt": 6.1,
+    "avg_daily_txn_count": 2.25,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "a6774880-cd73-4f16-b8d5-1702fdb42532"
+    ]
+  },
+  "0b2891d6-ae15-4d59-880f-ad2d879b2ae1": {
+    "user_id": "0b2891d6-ae15-4d59-880f-ad2d879b2ae1",
+    "full_name": "Lisa Hensley",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.751279,
+    "home_longitude": -73.980912,
+    "avg_transaction_amt": 117.69,
+    "stddev_transaction_amt": 36.52,
+    "avg_daily_txn_count": 2.05,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "9b0758db-9791-49a0-bcaf-fcaa4ee43894",
+      "95acb7f9-519f-4823-b512-6207c5fbc277"
+    ]
+  },
+  "09013562-e8c8-4f91-80ca-021a149189b2": {
+    "user_id": "09013562-e8c8-4f91-80ca-021a149189b2",
+    "full_name": "Michele Williams",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.787896,
+    "home_longitude": -80.191032,
+    "avg_transaction_amt": 48.92,
+    "stddev_transaction_amt": 25.87,
+    "avg_daily_txn_count": 3.81,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "18d66400-481e-4f2c-8d70-dc6cea19608d",
+      "a37a1466-c4e2-4870-9b29-7e8039d886d4",
+      "145d6da4-04ca-403a-9878-dd4197b5f9ee"
+    ]
+  },
+  "18a883b2-d93b-4c29-881d-910f1be1ed1d": {
+    "user_id": "18a883b2-d93b-4c29-881d-910f1be1ed1d",
+    "full_name": "Dylan Miller",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.904351,
+    "home_longitude": -87.625862,
+    "avg_transaction_amt": 189.53,
+    "stddev_transaction_amt": 91.12,
+    "avg_daily_txn_count": 7.26,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "0ad0982b-f95e-425a-9f10-9b6cb2b2f0b1"
+    ]
+  },
+  "930a9dea-d5ff-4eee-b61b-d00096f091a8": {
+    "user_id": "930a9dea-d5ff-4eee-b61b-d00096f091a8",
+    "full_name": "Brian Ramirez",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.750672,
+    "home_longitude": -73.972833,
+    "avg_transaction_amt": 375.55,
+    "stddev_transaction_amt": 87.92,
+    "avg_daily_txn_count": 6.42,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "23bef61b-f272-408e-b58e-6b9efc3e75ed",
+      "e8be8bfe-733e-4aa6-adb6-af505ebf8f03"
+    ]
+  },
+  "cd83f309-f59e-4006-828b-a43a65f545b4": {
+    "user_id": "cd83f309-f59e-4006-828b-a43a65f545b4",
+    "full_name": "Holly Wood",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.786998,
+    "home_longitude": -104.987029,
+    "avg_transaction_amt": 22.23,
+    "stddev_transaction_amt": 10.67,
+    "avg_daily_txn_count": 1.16,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "3a52928b-a276-418c-9237-02a944fd5646"
+    ]
+  },
+  "bd2c6889-8ef4-464e-b58f-0d22b5b76f8c": {
+    "user_id": "bd2c6889-8ef4-464e-b58f-0d22b5b76f8c",
+    "full_name": "Derek Zuniga",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.821336,
+    "home_longitude": -122.376509,
+    "avg_transaction_amt": 29.26,
+    "stddev_transaction_amt": 10.5,
+    "avg_daily_txn_count": 1.53,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "0af8b8be-ff96-48a3-a541-ced67a738b02",
+      "a9b81845-ff6b-45f5-acff-abd5c983bc80",
+      "14c5c4b2-70e7-43a7-b252-4c9d3d5b6b6a"
+    ]
+  },
+  "2789f5a7-cff5-45a7-9e1b-981bd9867e16": {
+    "user_id": "2789f5a7-cff5-45a7-9e1b-981bd9867e16",
+    "full_name": "Lisa Jackson",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.646161,
+    "home_longitude": -122.336951,
+    "avg_transaction_amt": 56.09,
+    "stddev_transaction_amt": 22.79,
+    "avg_daily_txn_count": 5.98,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "bdc684f5-7a04-4fa7-a29d-d8e36c06f68f",
+      "6f5e88a0-e2f3-49cf-809e-52fdaa524a06"
+    ]
+  },
+  "442ddff8-9a13-44ba-9acc-3ba293b5bf20": {
+    "user_id": "442ddff8-9a13-44ba-9acc-3ba293b5bf20",
+    "full_name": "Carla Gray",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.009299,
+    "home_longitude": -118.23059,
+    "avg_transaction_amt": 25.14,
+    "stddev_transaction_amt": 10.88,
+    "avg_daily_txn_count": 1.46,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "12c5b04b-fcdc-4227-b9c4-c174f677c3d7",
+      "1ae05abd-bd24-43f6-87cd-0b36a436697a",
+      "c03557b3-c4c6-4116-9430-751781b21213"
+    ]
+  },
+  "db10401c-e9c3-451f-94b8-148b59078333": {
+    "user_id": "db10401c-e9c3-451f-94b8-148b59078333",
+    "full_name": "Margaret Hawkins DDS",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.760241,
+    "home_longitude": -80.187877,
+    "avg_transaction_amt": 15.94,
+    "stddev_transaction_amt": 8.3,
+    "avg_daily_txn_count": 2.03,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "2ca9e7f3-7a81-40c7-bac4-95ea6c541dc0"
+    ]
+  },
+  "4935c841-7e1a-4a52-a53b-39523c51d1f5": {
+    "user_id": "4935c841-7e1a-4a52-a53b-39523c51d1f5",
+    "full_name": "Patty Perez",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.226633,
+    "home_longitude": -97.727202,
+    "avg_transaction_amt": 271.31,
+    "stddev_transaction_amt": 77.81,
+    "avg_daily_txn_count": 8.49,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "29a7256b-6f8b-4c58-b3a4-32fc3b05ef7c",
+      "34666348-7f65-4a0a-9e2f-2fc8f4bc4d33",
+      "082f58a1-6b1d-4212-90cf-4ff1e523fbfa"
+    ]
+  },
+  "1e091d51-78b7-43b2-a1aa-4e690cfd78a7": {
+    "user_id": "1e091d51-78b7-43b2-a1aa-4e690cfd78a7",
+    "full_name": "Ethan Adams",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.703062,
+    "home_longitude": -74.02207,
+    "avg_transaction_amt": 29.01,
+    "stddev_transaction_amt": 12.29,
+    "avg_daily_txn_count": 2.35,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "4f33561f-5c9d-4766-8165-47ec5b6158be",
+      "816cff23-a29e-4c2b-ba56-1b590450b14a"
+    ]
+  },
+  "cde0e02b-5748-45fa-a46c-78611876dd6b": {
+    "user_id": "cde0e02b-5748-45fa-a46c-78611876dd6b",
+    "full_name": "Tommy Walter",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.736681,
+    "home_longitude": -80.149473,
+    "avg_transaction_amt": 20.71,
+    "stddev_transaction_amt": 9.49,
+    "avg_daily_txn_count": 1.84,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "612fa0ef-46f7-4035-94bc-62ada8dc70c4",
+      "035fc201-6edb-4897-8dab-d3c1d8841472",
+      "5c7e56cc-3f81-450a-8bb9-d46da0347ff9"
+    ]
+  },
+  "1063a3df-8154-401f-833e-39e0d8412ec7": {
+    "user_id": "1063a3df-8154-401f-833e-39e0d8412ec7",
+    "full_name": "Matthew Foster",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.7959,
+    "home_longitude": -84.345363,
+    "avg_transaction_amt": 108.48,
+    "stddev_transaction_amt": 17.45,
+    "avg_daily_txn_count": 4.61,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "a387e413-79ac-4639-9eb4-6475d3a716f7"
+    ]
+  },
+  "c3232e40-6aa0-471f-a58b-1b41901e7112": {
+    "user_id": "c3232e40-6aa0-471f-a58b-1b41901e7112",
+    "full_name": "Judy Baker",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.347997,
+    "home_longitude": -71.010369,
+    "avg_transaction_amt": 29.57,
+    "stddev_transaction_amt": 7.14,
+    "avg_daily_txn_count": 1.8,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "75098763-0f5a-4753-bed7-896a2126b65a",
+      "3be7e016-9b33-45bf-aa82-6d0a5ecc352d",
+      "95aa480d-0192-447d-959f-e8391750b7a5"
+    ]
+  },
+  "979a2465-eec3-4fa4-b7bb-ccc08e31d959": {
+    "user_id": "979a2465-eec3-4fa4-b7bb-ccc08e31d959",
+    "full_name": "Justin Baker",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.770841,
+    "home_longitude": -84.42252,
+    "avg_transaction_amt": 335.54,
+    "stddev_transaction_amt": 62.82,
+    "avg_daily_txn_count": 7.88,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "0d19211d-79c6-4f4e-93f1-86ae2a186d94",
+      "07e2321c-32c1-47d2-a1ed-4955fdf8a0a0",
+      "edf1bc37-6a6b-40d0-88a5-ef73bb906bd5"
+    ]
+  },
+  "01d156c9-1757-4b1f-a244-4d38358c01c5": {
+    "user_id": "01d156c9-1757-4b1f-a244-4d38358c01c5",
+    "full_name": "Stephanie Ross",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.561214,
+    "home_longitude": -122.334421,
+    "avg_transaction_amt": 16.75,
+    "stddev_transaction_amt": 12.36,
+    "avg_daily_txn_count": 1.12,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "fb38beb6-20d9-4e01-86f1-e9bacaf84ff4",
+      "16efd779-0239-4391-a269-32655b35d300",
+      "edfbfb31-38c5-490e-855f-ea8001b8ea02"
+    ]
+  },
+  "2c698227-cfa4-4590-8f66-72ca698d962a": {
+    "user_id": "2c698227-cfa4-4590-8f66-72ca698d962a",
+    "full_name": "Zachary Hicks",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.792421,
+    "home_longitude": -122.44588,
+    "avg_transaction_amt": 43.82,
+    "stddev_transaction_amt": 5.8,
+    "avg_daily_txn_count": 1.37,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "6d9a690e-91ae-4af1-ada6-aba0215545ed"
+    ]
+  },
+  "bae074c8-e7ca-4d1a-a0cf-1ab694e43938": {
+    "user_id": "bae074c8-e7ca-4d1a-a0cf-1ab694e43938",
+    "full_name": "Anthony Rodriguez",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.728537,
+    "home_longitude": -73.999477,
+    "avg_transaction_amt": 270.9,
+    "stddev_transaction_amt": 86.31,
+    "avg_daily_txn_count": 3.28,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "83d19cd6-81f7-4caf-9d4e-14e38d111cfb",
+      "b4d2483a-9016-4c79-b1b7-51259130d12f",
+      "c2b77d80-56be-4d2a-8d4e-08127aff0c5f"
+    ]
+  },
+  "d45133f6-9d4d-4614-b7d9-e4b6d47893f0": {
+    "user_id": "d45133f6-9d4d-4614-b7d9-e4b6d47893f0",
+    "full_name": "Rebecca Henderson",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.284369,
+    "home_longitude": -97.7631,
+    "avg_transaction_amt": 161.28,
+    "stddev_transaction_amt": 97.3,
+    "avg_daily_txn_count": 4.67,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "5b905c2d-bca9-4c54-ad94-f0ff7f80a81f",
+      "1e98ceb0-c61d-440b-bd81-e130764d0102"
+    ]
+  },
+  "9a4d9bcc-d3f9-434f-bda4-a9a261e11cad": {
+    "user_id": "9a4d9bcc-d3f9-434f-bda4-a9a261e11cad",
+    "full_name": "James Ferrell",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.732226,
+    "home_longitude": -122.448085,
+    "avg_transaction_amt": 380.72,
+    "stddev_transaction_amt": 40.75,
+    "avg_daily_txn_count": 7.35,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "66b9aff3-5aa4-4335-af95-de6606f21e14",
+      "429813b1-4da3-4f0e-878a-883815705a2b"
+    ]
+  },
+  "b96906b5-d08c-40e7-ab0c-7fa3b4403902": {
+    "user_id": "b96906b5-d08c-40e7-ab0c-7fa3b4403902",
+    "full_name": "Tricia Valencia",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.755518,
+    "home_longitude": -80.187478,
+    "avg_transaction_amt": 25.47,
+    "stddev_transaction_amt": 5.69,
+    "avg_daily_txn_count": 1.49,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "1dacb9af-65b0-4f42-844d-6f1048565fee"
+    ]
+  },
+  "220109f1-e966-4e73-9551-14d33a6b384b": {
+    "user_id": "220109f1-e966-4e73-9551-14d33a6b384b",
+    "full_name": "Nathan Maldonado",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.792176,
+    "home_longitude": -84.427641,
+    "avg_transaction_amt": 118.98,
+    "stddev_transaction_amt": 31.35,
+    "avg_daily_txn_count": 2.03,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "2b42c34b-0320-4fce-a36c-650bb39b788e"
+    ]
+  },
+  "1214db68-4f18-47e3-b864-6db2b7753e27": {
+    "user_id": "1214db68-4f18-47e3-b864-6db2b7753e27",
+    "full_name": "Debra Davidson",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.732763,
+    "home_longitude": -80.207512,
+    "avg_transaction_amt": 41.69,
+    "stddev_transaction_amt": 12.42,
+    "avg_daily_txn_count": 1.31,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "edda3c9c-d629-4861-bde3-b1264951e328"
+    ]
+  },
+  "f6b13b39-5c29-450b-b5bb-9566d8ac938d": {
+    "user_id": "f6b13b39-5c29-450b-b5bb-9566d8ac938d",
+    "full_name": "Jeffrey Chavez",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.373528,
+    "home_longitude": -71.025965,
+    "avg_transaction_amt": 61.12,
+    "stddev_transaction_amt": 27.21,
+    "avg_daily_txn_count": 5.62,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "52f40515-592d-4605-98ad-bfaa820df013"
+    ]
+  },
+  "815d9618-19ea-4341-9d7c-9759edd14971": {
+    "user_id": "815d9618-19ea-4341-9d7c-9759edd14971",
+    "full_name": "Sherri Baker",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.759767,
+    "home_longitude": -104.984209,
+    "avg_transaction_amt": 38.13,
+    "stddev_transaction_amt": 11.37,
+    "avg_daily_txn_count": 1.52,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "24bcb964-fc2e-4145-9959-703abd97b938"
+    ]
+  },
+  "4a1b3cb0-5140-4bf8-ab71-3cce98b665d4": {
+    "user_id": "4a1b3cb0-5140-4bf8-ab71-3cce98b665d4",
+    "full_name": "Cassandra Gaines",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.611453,
+    "home_longitude": -122.339121,
+    "avg_transaction_amt": 41.49,
+    "stddev_transaction_amt": 14.04,
+    "avg_daily_txn_count": 2.09,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "145f0889-db45-40e5-a535-9dc87ab53ff2"
+    ]
+  },
+  "ffff68d3-f40a-4b9d-b3fc-1fbdb4a46e9f": {
+    "user_id": "ffff68d3-f40a-4b9d-b3fc-1fbdb4a46e9f",
+    "full_name": "Elizabeth Fowler",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.624407,
+    "home_longitude": -122.315407,
+    "avg_transaction_amt": 41.97,
+    "stddev_transaction_amt": 12.96,
+    "avg_daily_txn_count": 2.72,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "48359b49-199a-41d3-b12d-db024cb1165a",
+      "7a86a6e5-2bc8-479f-bf4b-49d7b810f9ac",
+      "605ad19c-b1d5-4de9-b8e3-3cffda75c410"
+    ]
+  },
+  "74618467-cdf1-4983-be99-5332c18a4ecd": {
+    "user_id": "74618467-cdf1-4983-be99-5332c18a4ecd",
+    "full_name": "Brittany Farmer",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.914561,
+    "home_longitude": -87.582179,
+    "avg_transaction_amt": 110.73,
+    "stddev_transaction_amt": 25.16,
+    "avg_daily_txn_count": 4.48,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "1303b114-c36f-44b0-92b4-9fb37b04e933"
+    ]
+  },
+  "9dcef339-8bab-421a-93ad-ae023b72bd14": {
+    "user_id": "9dcef339-8bab-421a-93ad-ae023b72bd14",
+    "full_name": "Paula Moreno",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.303606,
+    "home_longitude": -97.712025,
+    "avg_transaction_amt": 27.37,
+    "stddev_transaction_amt": 6.79,
+    "avg_daily_txn_count": 2.85,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "b52e57dc-3649-4a41-bd69-9e09255ecd58"
+    ]
+  },
+  "ef580144-0f3a-44dc-8348-dfa329497543": {
+    "user_id": "ef580144-0f3a-44dc-8348-dfa329497543",
+    "full_name": "Fred Smith",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.709157,
+    "home_longitude": -104.948455,
+    "avg_transaction_amt": 36.04,
+    "stddev_transaction_amt": 8.83,
+    "avg_daily_txn_count": 1.08,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "3ab323ca-f62e-4167-9f1c-83bb250fc9ef"
+    ]
+  },
+  "0b1bfaf9-4908-4436-a455-eb6e0879e012": {
+    "user_id": "0b1bfaf9-4908-4436-a455-eb6e0879e012",
+    "full_name": "Sherry Decker",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.035026,
+    "home_longitude": -118.207265,
+    "avg_transaction_amt": 38.86,
+    "stddev_transaction_amt": 7.28,
+    "avg_daily_txn_count": 1.05,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "a10790aa-7c63-4b8a-8659-a25eb0c1cfc9"
+    ]
+  },
+  "0e8f8e8c-3d36-4076-adc7-d54d7658d168": {
+    "user_id": "0e8f8e8c-3d36-4076-adc7-d54d7658d168",
+    "full_name": "Anthony Humphrey",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.792924,
+    "home_longitude": -84.426466,
+    "avg_transaction_amt": 34.24,
+    "stddev_transaction_amt": 9.0,
+    "avg_daily_txn_count": 2.96,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "97f0523c-7b0d-4ba3-a9f7-92015422cbb6"
+    ]
+  },
+  "f2511558-567a-4ee8-9874-d7e46503ea48": {
+    "user_id": "f2511558-567a-4ee8-9874-d7e46503ea48",
+    "full_name": "Angelica Tucker",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.290055,
+    "home_longitude": -97.761732,
+    "avg_transaction_amt": 43.88,
+    "stddev_transaction_amt": 7.65,
+    "avg_daily_txn_count": 1.22,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "79721fa1-4c44-4adb-81d4-eaa520e9f718",
+      "cc530690-5623-463d-baa4-ffd3dec803b2",
+      "635e1852-2b67-443e-9471-4457cad67834"
+    ]
+  },
+  "f2aa5bbc-d824-4f8a-a93f-c57c102baa54": {
+    "user_id": "f2aa5bbc-d824-4f8a-a93f-c57c102baa54",
+    "full_name": "Philip Cannon",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.353706,
+    "home_longitude": -71.056908,
+    "avg_transaction_amt": 134.69,
+    "stddev_transaction_amt": 111.96,
+    "avg_daily_txn_count": 4.33,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "dc8062d3-3a6e-41b9-be02-a83d50649d90",
+      "770eb45a-0a48-45ed-9376-e466bf6b745b",
+      "cdc23b70-f8f2-4929-9f3f-67e5695b6c99"
+    ]
+  },
+  "e4ad0ab3-d244-4783-ae21-f04d2cfef43a": {
+    "user_id": "e4ad0ab3-d244-4783-ae21-f04d2cfef43a",
+    "full_name": "John Pierce",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.563197,
+    "home_longitude": -122.315676,
+    "avg_transaction_amt": 97.55,
+    "stddev_transaction_amt": 33.55,
+    "avg_daily_txn_count": 4.68,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "2663a408-c781-472a-8c65-7555498c30c3",
+      "12e85373-23e6-4fcc-a460-43eca88b0331"
+    ]
+  },
+  "d6321e88-3ed2-4b41-9ffa-e7ca0ffa7894": {
+    "user_id": "d6321e88-3ed2-4b41-9ffa-e7ca0ffa7894",
+    "full_name": "Shane Henderson",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.765689,
+    "home_longitude": -84.405382,
+    "avg_transaction_amt": 93.07,
+    "stddev_transaction_amt": 18.12,
+    "avg_daily_txn_count": 5.6,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "07b9b9b1-599e-4c0f-8aa0-cc5494e94eb6"
+    ]
+  },
+  "7564055f-2f8f-4b01-b240-3c1c7adabfa2": {
+    "user_id": "7564055f-2f8f-4b01-b240-3c1c7adabfa2",
+    "full_name": "Joshua Blair",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.885011,
+    "home_longitude": -87.639192,
+    "avg_transaction_amt": 18.82,
+    "stddev_transaction_amt": 9.2,
+    "avg_daily_txn_count": 2.88,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "1de3975f-136b-4967-ba4e-349a554d368b",
+      "37c8e8ca-8e48-41dc-bb1f-4ab793335e9c",
+      "07d09990-938c-4a64-a17f-fa37ffe6200f"
+    ]
+  },
+  "e033feb3-5f93-4fab-bc16-f08dd90a0a7b": {
+    "user_id": "e033feb3-5f93-4fab-bc16-f08dd90a0a7b",
+    "full_name": "Eric Carney",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.600379,
+    "home_longitude": -122.314537,
+    "avg_transaction_amt": 21.31,
+    "stddev_transaction_amt": 12.86,
+    "avg_daily_txn_count": 2.21,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "f9ceb24a-d0ad-43cb-875f-597fcef6829d"
+    ]
+  },
+  "447e0e32-2c05-4132-a6f2-cdfff1e7f591": {
+    "user_id": "447e0e32-2c05-4132-a6f2-cdfff1e7f591",
+    "full_name": "Jessica Holmes",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.714345,
+    "home_longitude": -73.992706,
+    "avg_transaction_amt": 42.04,
+    "stddev_transaction_amt": 12.96,
+    "avg_daily_txn_count": 1.34,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "8b6693f8-ca5b-43bd-908a-7ed97957a888",
+      "31b7424d-70c6-4c0c-90b8-a1fb4b30791d"
+    ]
+  },
+  "1c4769c7-d16a-4352-a2cc-8d9ca64e97e9": {
+    "user_id": "1c4769c7-d16a-4352-a2cc-8d9ca64e97e9",
+    "full_name": "Danny Morgan",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.004643,
+    "home_longitude": -118.269216,
+    "avg_transaction_amt": 43.56,
+    "stddev_transaction_amt": 7.35,
+    "avg_daily_txn_count": 1.62,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "43a4fa5b-d2ae-49f1-8a2d-9f46de5bc6af",
+      "f4d53bf9-1aa9-4034-809a-add5827ffef5"
+    ]
+  },
+  "e21e8d94-7412-44da-a9a1-b23bd2cfb6b0": {
+    "user_id": "e21e8d94-7412-44da-a9a1-b23bd2cfb6b0",
+    "full_name": "Crystal Robinson",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.796735,
+    "home_longitude": -122.431002,
+    "avg_transaction_amt": 101.48,
+    "stddev_transaction_amt": 26.39,
+    "avg_daily_txn_count": 5.54,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "2f857abb-7068-453f-9bd8-c3f65e625c3d"
+    ]
+  },
+  "c4392810-64a3-44a8-9a42-c22c1d533640": {
+    "user_id": "c4392810-64a3-44a8-9a42-c22c1d533640",
+    "full_name": "Mark Perez",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.684684,
+    "home_longitude": -73.975589,
+    "avg_transaction_amt": 34.68,
+    "stddev_transaction_amt": 5.06,
+    "avg_daily_txn_count": 2.5,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "c3356189-9cbe-4019-8963-ab5c3a24729d"
+    ]
+  },
+  "826161a8-8e95-46bb-b167-9d2f10776f2e": {
+    "user_id": "826161a8-8e95-46bb-b167-9d2f10776f2e",
+    "full_name": "Shannon Jones",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.769342,
+    "home_longitude": -104.973542,
+    "avg_transaction_amt": 44.02,
+    "stddev_transaction_amt": 21.23,
+    "avg_daily_txn_count": 5.39,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "8b6544bf-b03d-44c2-8f3d-aa5e55628c6c",
+      "b0118375-6520-4582-ba8d-cbc2562d6276"
+    ]
+  },
+  "0690620a-75d3-4088-a1ac-a03e82b1700e": {
+    "user_id": "0690620a-75d3-4088-a1ac-a03e82b1700e",
+    "full_name": "Michael Lewis",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.782057,
+    "home_longitude": -84.383213,
+    "avg_transaction_amt": 116.0,
+    "stddev_transaction_amt": 37.29,
+    "avg_daily_txn_count": 4.45,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "deea5d2e-e733-40ce-b3db-a27e1f1eb1e7",
+      "b37a3c24-93c4-4af3-9eb9-5a53e290ba8f",
+      "87f674af-9fa0-4a51-b89a-f63f9b51cf07"
+    ]
+  },
+  "3a76a351-aa42-4041-8c43-d3dafd50be92": {
+    "user_id": "3a76a351-aa42-4041-8c43-d3dafd50be92",
+    "full_name": "Timothy Duncan",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.76016,
+    "home_longitude": -80.217875,
+    "avg_transaction_amt": 77.97,
+    "stddev_transaction_amt": 21.48,
+    "avg_daily_txn_count": 2.99,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "5726c0d1-789e-4f99-a2f9-e7b92fe87a81",
+      "2288a781-fb36-4b3e-af02-1d3847dee938",
+      "e25e8640-566b-4776-bee1-681ee97558e3"
+    ]
+  },
+  "5e5696ce-a20d-4f99-a6ef-c8beca4ad158": {
+    "user_id": "5e5696ce-a20d-4f99-a6ef-c8beca4ad158",
+    "full_name": "Richard Aguirre",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.712837,
+    "home_longitude": -84.414874,
+    "avg_transaction_amt": 23.57,
+    "stddev_transaction_amt": 7.72,
+    "avg_daily_txn_count": 1.64,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "b1b446e2-4033-4b51-98cc-8b063f3db5ac",
+      "fe4f507e-1673-4e52-9969-caf5bbe2f578",
+      "fd12bc4d-fd6e-4e50-8e46-4b7a4d0aa918"
+    ]
+  },
+  "5e05feac-eeb5-4c80-a005-f07a19b5aff6": {
+    "user_id": "5e05feac-eeb5-4c80-a005-f07a19b5aff6",
+    "full_name": "Brent Jordan",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.695427,
+    "home_longitude": -104.957011,
+    "avg_transaction_amt": 21.42,
+    "stddev_transaction_amt": 9.15,
+    "avg_daily_txn_count": 1.66,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "b0878626-bb03-4c0d-a7a4-dc1e6766da67",
+      "46b4727e-402d-48ff-9de5-024c948fbfd3"
+    ]
+  },
+  "70dc93c3-d2b7-4da9-a829-01b6335f1a8a": {
+    "user_id": "70dc93c3-d2b7-4da9-a829-01b6335f1a8a",
+    "full_name": "John Daniel",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.772598,
+    "home_longitude": -122.375126,
+    "avg_transaction_amt": 275.22,
+    "stddev_transaction_amt": 95.64,
+    "avg_daily_txn_count": 9.0,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "cd7ec281-b2e9-4c4c-a35c-62f8d4d3d0d4"
+    ]
+  },
+  "da31573d-eeac-47a7-827b-302b70204836": {
+    "user_id": "da31573d-eeac-47a7-827b-302b70204836",
+    "full_name": "Victoria Garcia",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.788781,
+    "home_longitude": -84.389177,
+    "avg_transaction_amt": 108.28,
+    "stddev_transaction_amt": 38.84,
+    "avg_daily_txn_count": 3.68,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "5fce89af-646e-4d0f-a4fc-1a7a74dcdd02"
+    ]
+  },
+  "7c92b6ba-b331-4bb7-9b6a-cc622b12fe7a": {
+    "user_id": "7c92b6ba-b331-4bb7-9b6a-cc622b12fe7a",
+    "full_name": "Gerald Hensley",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.301251,
+    "home_longitude": -97.701146,
+    "avg_transaction_amt": 15.87,
+    "stddev_transaction_amt": 8.36,
+    "avg_daily_txn_count": 2.36,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "e4d29d24-5c11-49fa-b660-c14395b3f20e",
+      "e7a56cfb-e835-4b8a-8b4a-783b0386656b"
+    ]
+  },
+  "f53f68d8-9f7f-4937-9975-5b9599eee2c7": {
+    "user_id": "f53f68d8-9f7f-4937-9975-5b9599eee2c7",
+    "full_name": "Connor West",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.705661,
+    "home_longitude": -73.969315,
+    "avg_transaction_amt": 112.55,
+    "stddev_transaction_amt": 29.8,
+    "avg_daily_txn_count": 4.65,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "816a52f3-c9a2-4c4a-a738-74399f3bd5b5",
+      "d595fa77-ec22-4dbb-9c34-83624c295b58",
+      "554294c6-401f-4fe3-a8c9-b578e2cf5c26"
+    ]
+  },
+  "b77357c2-9ddf-48d0-be18-aa0ae516e040": {
+    "user_id": "b77357c2-9ddf-48d0-be18-aa0ae516e040",
+    "full_name": "Donald Wright",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.292401,
+    "home_longitude": -97.709908,
+    "avg_transaction_amt": 26.37,
+    "stddev_transaction_amt": 7.12,
+    "avg_daily_txn_count": 1.65,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "9a36c65c-7e8b-47da-8450-c6ee4e3f3f0d",
+      "125cc04d-1284-4a6a-91e7-0db89b9a15c1"
+    ]
+  },
+  "db987f6b-51b1-4cfa-afbf-b2ca2debec0b": {
+    "user_id": "db987f6b-51b1-4cfa-afbf-b2ca2debec0b",
+    "full_name": "Jessica Callahan",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.621214,
+    "home_longitude": -122.303977,
+    "avg_transaction_amt": 77.62,
+    "stddev_transaction_amt": 33.73,
+    "avg_daily_txn_count": 2.21,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "9474b006-10f3-4a15-87d3-1cec639a823d",
+      "094627bf-1797-4cca-8497-741527622a4d"
+    ]
+  },
+  "40fd5617-571b-42cf-aad4-3dbe8017aaee": {
+    "user_id": "40fd5617-571b-42cf-aad4-3dbe8017aaee",
+    "full_name": "Amber Kidd",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.748754,
+    "home_longitude": -122.422044,
+    "avg_transaction_amt": 15.93,
+    "stddev_transaction_amt": 7.47,
+    "avg_daily_txn_count": 2.68,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "0ad7373b-bad7-4a4b-ba56-c361d9e1ef60"
+    ]
+  },
+  "32a2ad94-63db-4dab-9256-b163278d1101": {
+    "user_id": "32a2ad94-63db-4dab-9256-b163278d1101",
+    "full_name": "Tracy House",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.888825,
+    "home_longitude": -87.605007,
+    "avg_transaction_amt": 57.44,
+    "stddev_transaction_amt": 32.49,
+    "avg_daily_txn_count": 5.07,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "3835f4db-b9e1-4aad-bd02-12261ba1cf90",
+      "40768d60-b9e0-45c3-8f44-ad4ddaf7083d",
+      "f137be5e-c567-43af-a251-b9bfd8c7f892"
+    ]
+  },
+  "71712718-01a1-4a48-b186-012513ef7052": {
+    "user_id": "71712718-01a1-4a48-b186-012513ef7052",
+    "full_name": "Carol Tucker",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.779435,
+    "home_longitude": -80.145983,
+    "avg_transaction_amt": 53.1,
+    "stddev_transaction_amt": 22.78,
+    "avg_daily_txn_count": 4.31,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "f1368799-807e-4cdb-8900-b7dfc3ffeabd"
+    ]
+  },
+  "91812bd3-1458-42f0-bedf-a878339686f5": {
+    "user_id": "91812bd3-1458-42f0-bedf-a878339686f5",
+    "full_name": "James Brown",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.071919,
+    "home_longitude": -118.263542,
+    "avg_transaction_amt": 159.5,
+    "stddev_transaction_amt": 87.37,
+    "avg_daily_txn_count": 8.81,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "23ea6fa3-7608-44a3-963f-90fc10a09ef5",
+      "6a37c024-c757-4d99-b72f-bcfff6a4e7ba"
+    ]
+  },
+  "c7c026e5-c7e9-41d4-be47-2ae9cc3b4f42": {
+    "user_id": "c7c026e5-c7e9-41d4-be47-2ae9cc3b4f42",
+    "full_name": "William Baker",
+    "home_city": "Seattle",
+    "home_country": "US",
+    "home_latitude": 47.599038,
+    "home_longitude": -122.345043,
+    "avg_transaction_amt": 49.68,
+    "stddev_transaction_amt": 39.6,
+    "avg_daily_txn_count": 5.13,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "ac2d04e7-7988-4dea-888c-9e740aa99b13"
+    ]
+  },
+  "8699468b-269e-45d2-9ce5-c87990d3ca08": {
+    "user_id": "8699468b-269e-45d2-9ce5-c87990d3ca08",
+    "full_name": "Jordan Henderson",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.280759,
+    "home_longitude": -97.710229,
+    "avg_transaction_amt": 41.01,
+    "stddev_transaction_amt": 25.5,
+    "avg_daily_txn_count": 3.96,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "82fff85e-a60e-4e53-b448-1d3ea188c4b4"
+    ]
+  },
+  "2f3908e2-92ff-49ed-81ac-2037428b73e9": {
+    "user_id": "2f3908e2-92ff-49ed-81ac-2037428b73e9",
+    "full_name": "Whitney Peters",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.802364,
+    "home_longitude": -122.422913,
+    "avg_transaction_amt": 20.28,
+    "stddev_transaction_amt": 10.22,
+    "avg_daily_txn_count": 2.3,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "6909f19b-24b4-4e79-be7a-781ffd7c496c",
+      "8acc3ff3-9186-48f7-af03-d964ddcec920"
+    ]
+  },
+  "4b4b03f5-e123-4f98-b328-9beced40a882": {
+    "user_id": "4b4b03f5-e123-4f98-b328-9beced40a882",
+    "full_name": "Brittney Phillips",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.736086,
+    "home_longitude": -80.195329,
+    "avg_transaction_amt": 65.78,
+    "stddev_transaction_amt": 21.14,
+    "avg_daily_txn_count": 5.74,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "78d09359-85c6-409f-a8d0-3a89bc14f480",
+      "b205f0e4-2bc0-45b4-804c-b87429623216",
+      "a21a7745-9321-411a-8a04-74c9068e8ea4"
+    ]
+  },
+  "bb02eb95-132a-40e2-8844-cc342c78e5c9": {
+    "user_id": "bb02eb95-132a-40e2-8844-cc342c78e5c9",
+    "full_name": "Lauren Daniels",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.724682,
+    "home_longitude": -105.014465,
+    "avg_transaction_amt": 66.91,
+    "stddev_transaction_amt": 27.36,
+    "avg_daily_txn_count": 3.3,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "7e14a1e1-c0ab-4fc4-922e-cb0272e8b48f",
+      "5af3ed35-61f7-423a-845f-b13607a2ba88"
+    ]
+  },
+  "4c931ec4-39ad-419a-8c98-21d05849f2b9": {
+    "user_id": "4c931ec4-39ad-419a-8c98-21d05849f2b9",
+    "full_name": "Amy Silva",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.026336,
+    "home_longitude": -118.253057,
+    "avg_transaction_amt": 310.36,
+    "stddev_transaction_amt": 62.1,
+    "avg_daily_txn_count": 3.07,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "fba47a81-253b-4ee8-8998-33b6a3ac8951",
+      "462cdeea-10b6-411b-881a-5e7a6f16c573"
+    ]
+  },
+  "611a3b7f-2fd5-4898-b58b-a874a54262ca": {
+    "user_id": "611a3b7f-2fd5-4898-b58b-a874a54262ca",
+    "full_name": "Sarah Moore",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.339524,
+    "home_longitude": -71.06846,
+    "avg_transaction_amt": 95.25,
+    "stddev_transaction_amt": 31.15,
+    "avg_daily_txn_count": 3.96,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "c2eb5881-4f6d-4c32-a7b2-954dd92281b9",
+      "485f15c6-bf6c-4b83-aabb-84630da31dd0",
+      "f4c7eb5c-a521-4034-8a9d-e2aafbba933e"
+    ]
+  },
+  "f5b99224-a69b-4c53-995f-e66cdcbcace2": {
+    "user_id": "f5b99224-a69b-4c53-995f-e66cdcbcace2",
+    "full_name": "Angela Lopez",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.250279,
+    "home_longitude": -97.722815,
+    "avg_transaction_amt": 32.45,
+    "stddev_transaction_amt": 9.73,
+    "avg_daily_txn_count": 2.06,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "f7a8ef75-612e-4114-a4cb-3a7b1aba5f89"
+    ]
+  },
+  "3ff96604-4e03-4dc6-891e-ccb08b3665d3": {
+    "user_id": "3ff96604-4e03-4dc6-891e-ccb08b3665d3",
+    "full_name": "Megan Young",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.717515,
+    "home_longitude": -84.416362,
+    "avg_transaction_amt": 21.92,
+    "stddev_transaction_amt": 12.21,
+    "avg_daily_txn_count": 1.63,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "01cfdd03-6f95-4329-be1a-8cd0bf0bfa39",
+      "5b388f5f-6d5f-418c-b297-b6d3f407c44e",
+      "ba8ec1a5-f66d-4bc5-bcfb-4ae562f606a4"
+    ]
+  },
+  "d3fa40be-83e9-44aa-a0c7-a7515058661a": {
+    "user_id": "d3fa40be-83e9-44aa-a0c7-a7515058661a",
+    "full_name": "Steve Sanchez",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.692425,
+    "home_longitude": -74.019912,
+    "avg_transaction_amt": 32.69,
+    "stddev_transaction_amt": 12.6,
+    "avg_daily_txn_count": 2.19,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "55827349-fa8a-4e09-aca1-67d56e4d75aa"
+    ]
+  },
+  "de335021-e4fa-47fe-93f5-e0195c69bd3a": {
+    "user_id": "de335021-e4fa-47fe-93f5-e0195c69bd3a",
+    "full_name": "Lisa Barnes",
+    "home_city": "Atlanta",
+    "home_country": "US",
+    "home_latitude": 33.768742,
+    "home_longitude": -84.425372,
+    "avg_transaction_amt": 31.02,
+    "stddev_transaction_amt": 7.74,
+    "avg_daily_txn_count": 2.95,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "8be189c2-eb2f-48a3-9a14-9cb5ff4e7417",
+      "49cf5c16-65dc-4b62-8706-993fa89c5871"
+    ]
+  },
+  "639b8a14-eb0d-4df3-9ffc-ee89da2cf274": {
+    "user_id": "639b8a14-eb0d-4df3-9ffc-ee89da2cf274",
+    "full_name": "Kelly Donovan",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.707636,
+    "home_longitude": -105.035162,
+    "avg_transaction_amt": 41.18,
+    "stddev_transaction_amt": 10.74,
+    "avg_daily_txn_count": 1.94,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "6b775830-d1cf-45b6-8b92-bb807556168b",
+      "58f9da27-f7f2-4a0c-ba49-c215b351ff57"
+    ]
+  },
+  "e07e9355-5226-4d8f-9cd4-cf202c80eefb": {
+    "user_id": "e07e9355-5226-4d8f-9cd4-cf202c80eefb",
+    "full_name": "Mike Allen",
+    "home_city": "Boston",
+    "home_country": "US",
+    "home_latitude": 42.32502,
+    "home_longitude": -71.052616,
+    "avg_transaction_amt": 16.96,
+    "stddev_transaction_amt": 9.92,
+    "avg_daily_txn_count": 2.15,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "03edfda8-886b-43dd-9b85-05b320719aff"
+    ]
+  },
+  "146c228d-e520-45b7-ade3-b7194fcac550": {
+    "user_id": "146c228d-e520-45b7-ade3-b7194fcac550",
+    "full_name": "Michael Evans",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.747469,
+    "home_longitude": -122.417143,
+    "avg_transaction_amt": 22.45,
+    "stddev_transaction_amt": 10.58,
+    "avg_daily_txn_count": 1.83,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "6958a87a-866c-49ea-8bbe-a94b07ddb53a"
+    ]
+  },
+  "36a80482-0cce-4f77-82fd-d16f2acdfe48": {
+    "user_id": "36a80482-0cce-4f77-82fd-d16f2acdfe48",
+    "full_name": "Paul Jones",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.730923,
+    "home_longitude": -122.373389,
+    "avg_transaction_amt": 189.21,
+    "stddev_transaction_amt": 87.08,
+    "avg_daily_txn_count": 6.0,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "178bc5ce-8b62-4867-8437-1a5e66e363bc",
+      "f2384229-c823-4ef5-bc0b-17b83f61b74e"
+    ]
+  },
+  "03366933-d165-4ebe-a5f4-e82f7c418269": {
+    "user_id": "03366933-d165-4ebe-a5f4-e82f7c418269",
+    "full_name": "Zachary Ferrell",
+    "home_city": "Chicago",
+    "home_country": "US",
+    "home_latitude": 41.845481,
+    "home_longitude": -87.672294,
+    "avg_transaction_amt": 162.34,
+    "stddev_transaction_amt": 56.88,
+    "avg_daily_txn_count": 7.62,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "f82a4517-be67-40ee-86e7-a97485769667",
+      "fa7bb66a-8c83-4d4a-9856-2c0505c0faa0"
+    ]
+  },
+  "9354e02b-65ec-4f0b-8330-7b27bd8e08a4": {
+    "user_id": "9354e02b-65ec-4f0b-8330-7b27bd8e08a4",
+    "full_name": "Daniel Baker",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.739972,
+    "home_longitude": -80.155839,
+    "avg_transaction_amt": 35.68,
+    "stddev_transaction_amt": 9.7,
+    "avg_daily_txn_count": 1.07,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "8f726d2a-7d9a-4fed-860e-3b5d77049ecf"
+    ]
+  },
+  "c7aff91c-4e2c-45ad-9d18-6b7b9a47adfa": {
+    "user_id": "c7aff91c-4e2c-45ad-9d18-6b7b9a47adfa",
+    "full_name": "Shirley Suarez",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.013678,
+    "home_longitude": -118.271219,
+    "avg_transaction_amt": 113.91,
+    "stddev_transaction_amt": 34.7,
+    "avg_daily_txn_count": 4.5,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "92d083e3-5698-4072-b7aa-54e8ba1ab9ea",
+      "be7ac13c-5613-4f01-bb3c-61fdc0f108a1",
+      "19f1130e-6571-4941-a3f7-8d5f17d718fb"
+    ]
+  },
+  "6440cf86-a9ee-49f8-a300-d66f8a989fd2": {
+    "user_id": "6440cf86-a9ee-49f8-a300-d66f8a989fd2",
+    "full_name": "Christopher Bass",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.786596,
+    "home_longitude": -80.184879,
+    "avg_transaction_amt": 347.99,
+    "stddev_transaction_amt": 45.71,
+    "avg_daily_txn_count": 4.16,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "49997c38-a0c0-49d0-8057-e9853942f01e",
+      "71477a91-39cf-4670-bdd7-4aa12b11ba99"
+    ]
+  },
+  "091f326b-ef73-40d7-93af-4164ada3e5da": {
+    "user_id": "091f326b-ef73-40d7-93af-4164ada3e5da",
+    "full_name": "Lisa Archer",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.765698,
+    "home_longitude": -80.198024,
+    "avg_transaction_amt": 29.06,
+    "stddev_transaction_amt": 8.04,
+    "avg_daily_txn_count": 1.81,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "99b4bd40-7689-4e6d-8f5a-8afe485ca493",
+      "517c7d96-8ad8-4e9d-a90d-59efe5d248f3",
+      "82259bf6-778a-4e8d-9e9e-1b17ebb96cb0"
+    ]
+  },
+  "9596ff9d-82cc-444e-ba98-2e8aec7de963": {
+    "user_id": "9596ff9d-82cc-444e-ba98-2e8aec7de963",
+    "full_name": "Aimee Montoya",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.758991,
+    "home_longitude": -73.972404,
+    "avg_transaction_amt": 27.96,
+    "stddev_transaction_amt": 8.22,
+    "avg_daily_txn_count": 1.5,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "394a4b83-0275-4da4-a8ab-5862504d300e",
+      "defc42ab-2804-402c-9e9e-cf7fe6454331",
+      "9c844c43-cfb0-4413-97fe-62180beebdd0"
+    ]
+  },
+  "a113c22f-6c24-4ad3-a65a-789386bf9346": {
+    "user_id": "a113c22f-6c24-4ad3-a65a-789386bf9346",
+    "full_name": "Matthew Mcmillan",
+    "home_city": "San Francisco",
+    "home_country": "US",
+    "home_latitude": 37.801211,
+    "home_longitude": -122.451881,
+    "avg_transaction_amt": 41.66,
+    "stddev_transaction_amt": 34.12,
+    "avg_daily_txn_count": 5.29,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "f352e651-94c0-47d1-bb6a-f18d4c25748e",
+      "efb5c746-7360-4518-aa34-02826307c42f",
+      "ce0416b6-d060-41e6-8191-347d267e7c24"
+    ]
+  },
+  "757f248a-d59a-4de2-9a13-c737f16a4135": {
+    "user_id": "757f248a-d59a-4de2-9a13-c737f16a4135",
+    "full_name": "Brian Rodriguez",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.736201,
+    "home_longitude": -104.999465,
+    "avg_transaction_amt": 113.29,
+    "stddev_transaction_amt": 19.54,
+    "avg_daily_txn_count": 4.34,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "aad2c6ca-ad95-4baf-82cc-5020a01bbede"
+    ]
+  },
+  "d5c7dfa2-5898-4956-bdc7-f93a37c67a89": {
+    "user_id": "d5c7dfa2-5898-4956-bdc7-f93a37c67a89",
+    "full_name": "Denise Jacobs",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.806219,
+    "home_longitude": -80.160443,
+    "avg_transaction_amt": 108.62,
+    "stddev_transaction_amt": 23.25,
+    "avg_daily_txn_count": 4.77,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "4ba563f4-21b5-49a7-b43d-cd8205c5f74c"
+    ]
+  },
+  "71badd44-9c85-4b1e-b8ff-7a2b607f2560": {
+    "user_id": "71badd44-9c85-4b1e-b8ff-7a2b607f2560",
+    "full_name": "Christina Walters",
+    "home_city": "Austin",
+    "home_country": "US",
+    "home_latitude": 30.299693,
+    "home_longitude": -97.792985,
+    "avg_transaction_amt": 17.64,
+    "stddev_transaction_amt": 7.52,
+    "avg_daily_txn_count": 1.23,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "65dfbc23-e790-4210-9bb2-0102727b165c"
+    ]
+  },
+  "95d6a8bd-dc39-483f-bc1b-608abee6b7b7": {
+    "user_id": "95d6a8bd-dc39-483f-bc1b-608abee6b7b7",
+    "full_name": "John Whitehead",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.733404,
+    "home_longitude": -105.035139,
+    "avg_transaction_amt": 16.63,
+    "stddev_transaction_amt": 10.18,
+    "avg_daily_txn_count": 2.25,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "1e80ea60-9e27-4618-93a0-fb814af60929",
+      "7c59151a-597b-4eab-aa66-c2a8213c86a5",
+      "d64b9bd9-cf99-4fd2-9089-0270dc6a6c29"
+    ]
+  },
+  "e1edd67c-5d20-47aa-9476-9a044e7f673e": {
+    "user_id": "e1edd67c-5d20-47aa-9476-9a044e7f673e",
+    "full_name": "Anna Henderson",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.760115,
+    "home_longitude": -73.995113,
+    "avg_transaction_amt": 114.21,
+    "stddev_transaction_amt": 25.95,
+    "avg_daily_txn_count": 4.79,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "64be4537-f254-4fd3-adb8-2aac882a2931",
+      "ca8b79cc-6167-4d53-b53a-2509010d7f9e"
+    ]
+  },
+  "76d926e7-0e49-4ca2-9d23-9c1f869a4688": {
+    "user_id": "76d926e7-0e49-4ca2-9d23-9c1f869a4688",
+    "full_name": "Aaron Wise",
+    "home_city": "Los Angeles",
+    "home_country": "US",
+    "home_latitude": 34.048345,
+    "home_longitude": -118.281953,
+    "avg_transaction_amt": 64.86,
+    "stddev_transaction_amt": 15.34,
+    "avg_daily_txn_count": 3.63,
+    "risk_tier": "MEDIUM",
+    "trusted_devices": [
+      "ce662a33-ac5c-4033-9032-0d5137266824"
+    ]
+  },
+  "8a1d13ab-47f5-4c59-80b7-d7c9fecd920a": {
+    "user_id": "8a1d13ab-47f5-4c59-80b7-d7c9fecd920a",
+    "full_name": "Deborah Figueroa",
+    "home_city": "Denver",
+    "home_country": "US",
+    "home_latitude": 39.713573,
+    "home_longitude": -104.985173,
+    "avg_transaction_amt": 36.5,
+    "stddev_transaction_amt": 10.09,
+    "avg_daily_txn_count": 1.55,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "6663f69d-fac3-42ed-beea-78dc7e9bba7a",
+      "183becaa-3351-4f51-b0ed-8827885e7bcb"
+    ]
+  },
+  "ebaaf512-83f5-4fe1-b961-e2fd1f12b030": {
+    "user_id": "ebaaf512-83f5-4fe1-b961-e2fd1f12b030",
+    "full_name": "Jessica Smith",
+    "home_city": "New York",
+    "home_country": "US",
+    "home_latitude": 40.740068,
+    "home_longitude": -73.970559,
+    "avg_transaction_amt": 32.98,
+    "stddev_transaction_amt": 12.46,
+    "avg_daily_txn_count": 1.27,
+    "risk_tier": "LOW",
+    "trusted_devices": [
+      "3231bd6e-11b0-447c-a680-4257be43d68f",
+      "3f6cbb7d-ad39-43df-af52-09760a1f5e05"
+    ]
+  },
+  "3e7defb2-c2b5-4592-9f7a-d0a74be6cfbd": {
+    "user_id": "3e7defb2-c2b5-4592-9f7a-d0a74be6cfbd",
+    "full_name": "Stephen Mckee",
+    "home_city": "Miami",
+    "home_country": "US",
+    "home_latitude": 25.769692,
+    "home_longitude": -80.175806,
+    "avg_transaction_amt": 252.32,
+    "stddev_transaction_amt": 105.64,
+    "avg_daily_txn_count": 4.98,
+    "risk_tier": "HIGH",
+    "trusted_devices": [
+      "28a906f3-4afa-4959-94dd-548c93c946f1",
+      "a485e2b6-4ae7-4b96-a0b9-7ca1fa18484d"
+    ]
+  }
+}
