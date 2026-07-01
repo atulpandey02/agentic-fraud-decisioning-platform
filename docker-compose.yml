@@ -161,7 +161,7 @@ services:
       - "6379:6379"
     command: >
       redis-server
-      --maxmemory 512mb
+      --maxmemory 1gb
       --maxmemory-policy allkeys-lru
       --appendonly yes
     volumes:
