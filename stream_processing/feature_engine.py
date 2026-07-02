@@ -19,14 +19,19 @@
 # =============================================================
 
 import os
+import io
 import uuid
 import json
 import math
+import time
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 import redis
+import boto3
+import pyarrow as pa
+import pyarrow.parquet as pq
 import snowflake.connector
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql import functions as F
@@ -110,6 +115,28 @@ class FeatureEngineConfig:
     SNOWFLAKE_DATABASE  = os.getenv("SNOWFLAKE_DATABASE", "FRAUD_DETECTION")
     SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
     SNOWFLAKE_ROLE      = os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN")
+
+    # -----------------------------------------------------------
+    # S3 STAGING (replaces direct row-by-row Snowflake insert)
+    # Feature rows are buffered in memory across micro-batches,
+    # then flushed as a single Parquet file to S3. Snowpipe
+    # (AUTO_INGEST, SQS-triggered) picks up the file and loads
+    # it into FACT_FEATURE_SNAPSHOTS automatically — no polling,
+    # no manual COPY INTO, no per-row Python connector overhead.
+    #
+    # Why buffer instead of writing every micro-batch immediately:
+    #   Parquet is a columnar format with per-file overhead
+    #   (footer, schema, compression setup). Writing a 3-row
+    #   Parquet file every 30 seconds is wasteful — better to
+    #   accumulate rows across several micro-batches and write
+    #   fewer, larger files. This is the same "small files problem"
+    #   that shows up in every columnar/data-lake system.
+    # -----------------------------------------------------------
+    S3_BUCKET           = os.getenv("S3_BUCKET", "fraud-detection-platform-staging")
+    S3_PREFIX           = os.getenv("S3_PREFIX", "features")
+    S3_REGION           = os.getenv("AWS_REGION", "ca-central-1")
+    FLUSH_EVERY_N_BATCHES = 5       # flush accumulated rows every 5 micro-batches
+    FLUSH_MAX_ROWS         = 50_000 # or flush early if buffer exceeds this many rows
 
 
 # =============================================================
@@ -208,6 +235,52 @@ class RedisFeatureWriter:
         except Exception as e:
             logger.warning(f"Redis read failed for {user_id}: {e}")
             return None
+
+    def get_last_locations_batch(self, user_ids: List[str]) -> Dict[str, Optional[Dict]]:
+        """
+        Read last known locations for MANY users in a SINGLE
+        Redis round trip using MGET, instead of one GET per user.
+
+        Why this matters (the N+1 problem):
+            The original per-row loop called get_last_location()
+            once per transaction inside the foreachBatch Python
+            loop — 10,000 transactions/batch = 10,000 separate
+            network round trips to Redis, each paying network
+            latency even though the actual GET operation itself
+            is sub-millisecond. MGET fetches all keys in exactly
+            ONE round trip regardless of how many keys you ask for.
+            This is the same fix already applied to Redis WRITES
+            (write_batch dedupes + pipelines) — now applied to READS.
+
+        Returns:
+            dict mapping user_id -> location dict (or None if
+            no prior location exists for that user yet)
+        """
+        if not self._client or not user_ids:
+            return {}
+
+        # De-duplicate — if the same user appears 50 times in this
+        # batch, we only need to fetch their location ONCE, not 50x
+        unique_user_ids = list(set(user_ids))
+        keys = [f"user:{uid}:location" for uid in unique_user_ids]
+
+        try:
+            raw_values = self._client.mget(keys)  # ONE round trip
+        except Exception as e:
+            logger.warning(f"Redis MGET batch failed: {e}")
+            return {uid: None for uid in unique_user_ids}
+
+        result: Dict[str, Optional[Dict]] = {}
+        for user_id, raw in zip(unique_user_ids, raw_values):
+            if raw:
+                try:
+                    result[user_id] = json.loads(raw)
+                except (json.JSONDecodeError, TypeError):
+                    result[user_id] = None
+            else:
+                result[user_id] = None
+
+        return result
 
     def write_features(self, user_id: str, features: Dict) -> None:
         """Write full feature snapshot — agent reads this."""
@@ -310,6 +383,89 @@ class RedisFeatureWriter:
 # =============================================================
 # SNOWFLAKE FEATURE WRITER
 # =============================================================
+# =============================================================
+# S3 FEATURE WRITER — buffered Parquet staging for Snowpipe
+# =============================================================
+class S3FeatureWriter:
+    """
+    Accumulates feature rows across micro-batches, then flushes
+    them as a single Parquet file to S3. Snowpipe (AUTO_INGEST,
+    SQS-notified) picks up the file and loads it automatically.
+
+    Why this replaces the row-by-row Snowflake executemany insert:
+        executemany was doing ~10K individual row inserts via the
+        Python connector, taking minutes per micro-batch and
+        becoming the dominant bottleneck in the whole pipeline.
+        Writing one Parquet file and letting Snowflake's own
+        COPY-based ingestion (via Snowpipe) load it is the same
+        pattern production systems use — the load happens via
+        Snowflake's bulk loader, not a client-side loop.
+
+    This still runs on the driver (not a Spark-native executor
+    write) because we're working with plain Python dicts already
+    collected for the Redis geo-state lookup — but going from
+    "10K row-by-row INSERTs" to "1 Parquet file + Snowflake's own
+    COPY" is the single biggest throughput fix available without
+    re-architecting the geo/Redis lookup into a Spark UDF.
+    """
+
+    def __init__(self, config: FeatureEngineConfig):
+        self._config = config
+        self._s3_client = boto3.client("s3", region_name=config.S3_REGION)
+        self._buffer: List[Dict] = []
+        self._batches_since_flush = 0
+
+    def add_batch(self, rows: List[Dict]) -> None:
+        """Add a micro-batch's feature rows to the in-memory buffer."""
+        self._buffer.extend(rows)
+        self._batches_since_flush += 1
+
+    def should_flush(self) -> bool:
+        return (
+            self._batches_since_flush >= self._config.FLUSH_EVERY_N_BATCHES
+            or len(self._buffer) >= self._config.FLUSH_MAX_ROWS
+        )
+
+    def flush(self) -> Optional[str]:
+        """
+        Write the buffered rows to S3 as a single Parquet file.
+        Returns the S3 key written, or None if buffer was empty.
+
+        File naming includes a UUID + timestamp to guarantee
+        uniqueness — Snowpipe processes each file exactly once
+        by object key, so colliding names would silently drop data.
+        """
+        if not self._buffer:
+            return None
+
+        table = pa.Table.from_pylist(self._buffer)
+
+        buf = io.BytesIO()
+        pq.write_table(table, buf, compression="snappy")
+        buf.seek(0)
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        file_id = str(uuid.uuid4())[:8]
+        key = f"{self._config.S3_PREFIX}/features_{timestamp}_{file_id}.parquet"
+
+        self._s3_client.put_object(
+            Bucket=self._config.S3_BUCKET,
+            Key=key,
+            Body=buf.getvalue(),
+        )
+
+        row_count = len(self._buffer)
+        logger.info(
+            f"S3: flushed {row_count:,} rows -> "
+            f"s3://{self._config.S3_BUCKET}/{key} "
+            f"({len(buf.getvalue()) / 1024:.1f} KB, snappy compressed)"
+        )
+
+        self._buffer = []
+        self._batches_since_flush = 0
+        return key
+
+
 class SnowflakeFeatureWriter:
     """
     Writes feature snapshots to FEATURES.FACT_FEATURE_SNAPSHOTS.
@@ -418,7 +574,8 @@ class FraudFeatureEngine:
         self._config = FeatureEngineConfig()
         self._spark: Optional[SparkSession] = None
         self._redis_writer = RedisFeatureWriter(self._config)
-        self._sf_writer = SnowflakeFeatureWriter(self._config)
+        self._sf_writer = SnowflakeFeatureWriter(self._config)   # kept for test_connection() / manual fallback
+        self._s3_writer = S3FeatureWriter(self._config)          # primary path: buffered Parquet -> Snowpipe
         self._user_baselines: Dict = {}  # user_id → {avg, stddev, surrogate_key}
         self._trusted_devices: Dict = {} # user_id → set of device_ids
 
@@ -464,13 +621,16 @@ class FraudFeatureEngine:
         )
         spark.sparkContext.setLogLevel("WARN")
         # Suppress KAFKA-1894 warning — harmless but extremely noisy
-        # It fires once per partition per micro-batch because Spark's
-        # Kafka consumer runs in a non-interruptible thread context.
-        # Does not affect correctness — safe to suppress.
+        # Fires once per partition per micro-batch — purely cosmetic.
+        # The warning is from Spark's Kafka010 connector running in
+        # a non-interruptible thread context, not a real error.
         log4j = spark.sparkContext._jvm.org.apache.log4j
-        log4j.LogManager.getLogger("org.apache.kafka").setLevel(
-            log4j.Level.ERROR
-        )
+        log4j.LogManager.getLogger(
+            "org.apache.spark.sql.kafka010.KafkaDataConsumer"
+        ).setLevel(log4j.Level.ERROR)
+        log4j.LogManager.getLogger(
+            "org.apache.kafka"
+        ).setLevel(log4j.Level.ERROR)
         logger.info("Spark session ready")
         return spark
 
@@ -702,6 +862,7 @@ class FraudFeatureEngine:
         """
         redis_writer = self._redis_writer
         sf_writer = self._sf_writer
+        s3_writer = self._s3_writer
         user_baselines = self._user_baselines
         trusted_devices = self._trusted_devices
         config = self._config
@@ -720,6 +881,17 @@ class FraudFeatureEngine:
             # is clear and debuggable
             rows = batch_df.collect()
 
+            # ---- Batch-fetch ALL user locations in ONE Redis round trip ----
+            # Fixes the N+1 problem: previously this loop called
+            # redis_writer.get_last_location(user_id) once PER ROW —
+            # 10,000 transactions/batch = 10,000 separate network
+            # round trips. MGET fetches every unique user's last
+            # location in a single call, then the loop below does
+            # a plain in-memory dict lookup (microseconds) instead
+            # of a network call (milliseconds) for every row.
+            batch_user_ids = [row["user_id"] for row in rows]
+            last_locations = redis_writer.get_last_locations_batch(batch_user_ids)
+
             features_list = []
             sf_rows = []
 
@@ -733,8 +905,8 @@ class FraudFeatureEngine:
                 amount     = float(row["amount"] or 0)
                 zscore     = (amount - avg_amt) / stddev_amt if stddev_amt > 0 else 0.0
 
-                # ---- Geo features from Redis state ----
-                last_loc = redis_writer.get_last_location(user_id)
+                # ---- Geo features from Redis state (in-memory lookup now) ----
+                last_loc = last_locations.get(user_id)
                 geo_distance_km      = None
                 time_since_last_min  = None
                 prev_city            = None
@@ -849,11 +1021,22 @@ class FraudFeatureEngine:
                     "is_flagged_for_review":    feature_dict["is_flagged_for_review"],
                 })
 
-            # Write to Redis (online store — agent reads here)
+            # Write to Redis (online store — agent reads here, always
+            # immediate — every micro-batch, no buffering, since the
+            # agent needs current state, not eventually-consistent state)
             redis_writer.write_batch(features_list)
 
-            # Write to Snowflake (offline store — audit trail)
-            sf_writer.write_batch(sf_rows)
+            # Stage to S3 for Snowpipe auto-ingestion (offline audit trail).
+            # NOT written to Snowflake directly anymore — see S3FeatureWriter
+            # docstring for why row-by-row executemany was the bottleneck.
+            # Rows are buffered across FLUSH_EVERY_N_BATCHES micro-batches
+            # (or until FLUSH_MAX_ROWS is hit) before being written as one
+            # Parquet file. Snowpipe (AUTO_INGEST via SQS) picks it up from
+            # there — no code in this process talks to Snowflake for this
+            # write path at all once the file lands in S3.
+            s3_writer.add_batch(sf_rows)
+            if s3_writer.should_flush():
+                s3_writer.flush()
 
             flagged = sum(1 for f in features_list if f["is_flagged_for_review"])
             logger.info(
@@ -932,6 +1115,12 @@ class FraudFeatureEngine:
         except KeyboardInterrupt:
             logger.info("Stopping feature engine...")
             query.stop()
+            # Flush any buffered rows still sitting in memory —
+            # otherwise up to FLUSH_EVERY_N_BATCHES micro-batches
+            # of features would be silently lost on shutdown.
+            remaining_key = self._s3_writer.flush()
+            if remaining_key:
+                logger.info(f"Final flush on shutdown: {remaining_key}")
             logger.info("Feature engine stopped.")
 
 
