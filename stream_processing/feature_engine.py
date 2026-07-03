@@ -25,6 +25,7 @@ import json
 import math
 import time
 import logging
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Dict, Optional, List
 
@@ -40,6 +41,14 @@ from pyspark.sql.types import (
     BooleanType, TimestampType, IntegerType
 )
 from dotenv import load_dotenv
+
+from window_config import (
+    VELOCITY_WINDOWS,
+    WATERMARK_DELAY as _WATERMARK_DELAY,
+    PRIMARY_WINDOW_DURATION,
+    PRIMARY_SLIDE_DURATION,
+    VELOCITY_FLAG_THRESHOLD as _VELOCITY_FLAG_THRESHOLD,
+)
 
 load_dotenv()
 logging.basicConfig(
@@ -66,19 +75,25 @@ class FeatureEngineConfig:
     # Spark
     SPARK_APP_NAME          = "FraudFeatureEngine"
     SPARK_MASTER            = "local[*]"   # use all available cores on Mac
-    TRIGGER_INTERVAL        = "30 seconds" # micro-batch frequency
+    TRIGGER_INTERVAL        = "10 seconds" # micro-batch frequency
+        # reduced from 30s — the old bottleneck (row-by-row Snowflake
+        # insert) is gone as of Day 3's S3/Snowpipe fix, and the N+1
+        # Redis reads are now single MGET calls, so batches finish
+        # well under 30s. No reason to wait that long between batches.
     CHECKPOINT_DIR          = "/tmp/fraud-feature-checkpoint"
+    VELOCITY_CHECKPOINT_DIR = "/tmp/fraud-velocity-checkpoint"  # same path
+        # velocity_engine.py uses — running the query from inside this
+        # class instead of a separate process resumes the SAME
+        # checkpoint state, no discontinuity from the merge
 
-    # Sliding window definitions
+    # Sliding window definitions now live in window_config.py — shared
+    # with velocity_engine.py so the two never silently drift apart on
+    # duration or threshold (this was flagged as open duplication in
+    # the Day 3 learning sheet; fixed here as part of the merge).
     # event time based — transaction_ts, not processing time
     # Why: fraud velocity = what the user DID, not when Spark read it
-    WINDOWS = [
-        ("5 minutes",  "1 minute",  "velocity_5min"),
-        ("15 minutes", "1 minute",  "velocity_15min"),
-        ("1 hour",     "5 minutes", "velocity_1hr"),
-        ("24 hours",   "30 minutes","velocity_24hr"),
-    ]
-    WATERMARK_DELAY = "10 minutes"  # wait up to 10 min for late events
+    WINDOWS = VELOCITY_WINDOWS
+    WATERMARK_DELAY = _WATERMARK_DELAY  # wait up to 10 min for late events
 
     # Risk scoring weights (heuristic, pre-agent)
     # These are directionally correct but not ML-tuned
@@ -89,6 +104,37 @@ class FeatureEngineConfig:
         "new_device":      0.20,   # supporting signal, not standalone
     }
     RISK_FLAG_THRESHOLD = 0.60     # flag for agent review if score > 0.6
+
+    # -----------------------------------------------------------
+    # HARD-RULE SINGLE-SIGNAL OVERRIDES — added Day 4
+    #
+    # Diagnosed via precision_recall_check.sql on a clean 1M-row
+    # dataset: GEO_JUMP (5.6%), AMOUNT_ANOMALY (6.7%), and
+    # VELOCITY_SPIKE (8.5%) catch rates were all near-zero because
+    # our fraud generator deliberately makes these SINGLE-SIGNAL
+    # patterns — a pure geo-jump only elevates geo_distance and
+    # leaves amount/device/velocity completely normal. A same-
+    # weighted additive score maxing at 0.25 for any one signal
+    # can never cross a 0.60 threshold alone, no matter how
+    # extreme that one signal is. Real fraud engines solve this
+    # with a two-tier structure: hard rules for individually
+    # severe signals, plus a weighted score for combinations of
+    # moderate signals. This is that fix.
+    #
+    # NEW_DEVICE deliberately does NOT get a hard-rule override.
+    # Our own DIM_DEVICES generator (Day 1) marks some of a
+    # user's real, previously-used secondary devices as
+    # is_trusted=False — meaning is_new_device=True fires on
+    # plenty of genuinely legitimate transactions too, not just
+    # fraud. Auto-flagging on that signal alone would spike false
+    # positives on ordinary behavior. It stays a WEIGHTED signal
+    # only — it can help push a combined score over threshold,
+    # but never triggers a flag by itself.
+    # -----------------------------------------------------------
+    HARD_RULE_GEO_THRESHOLD      = 0.95  # geo_signal >= this -> auto-flag
+    HARD_RULE_AMOUNT_THRESHOLD   = 0.95  # amt_signal >= this -> auto-flag
+    HARD_RULE_VELOCITY_THRESHOLD = 1.0   # v15 fully saturated (>=5 txns/15min,
+                                          # the actual JP Morgan threshold) -> auto-flag
 
     # Velocity normalization for risk scoring
     # velocity_15min > 5 = JP Morgan flag threshold
@@ -115,6 +161,31 @@ class FeatureEngineConfig:
     SNOWFLAKE_DATABASE  = os.getenv("SNOWFLAKE_DATABASE", "FRAUD_DETECTION")
     SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
     SNOWFLAKE_ROLE      = os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN")
+
+    @classmethod
+    def for_testing(cls) -> "FeatureEngineConfig":
+        """
+        Alternate constructor — @classmethod, not @staticmethod,
+        because it needs cls() to build an actual instance of
+        whichever class it's called on. A staticmethod couldn't
+        do that; it has no access to the class itself, only
+        whatever arguments you pass it directly.
+
+        Usage:
+            config = FeatureEngineConfig.for_testing()
+            # instead of:
+            config = FeatureEngineConfig()
+
+        Returns a config with a faster trigger interval and
+        smaller flush thresholds, for quick local iteration
+        without editing the production constants above or
+        needing a second config file.
+        """
+        config = cls()
+        config.TRIGGER_INTERVAL = "5 seconds"
+        config.FLUSH_EVERY_N_BATCHES = 2
+        config.FLUSH_MAX_ROWS = 5_000
+        return config
 
     # -----------------------------------------------------------
     # S3 STAGING (replaces direct row-by-row Snowflake insert)
@@ -191,9 +262,61 @@ def haversine_distance(lat1, lon1, lat2, lon2) -> float:
 
 
 # =============================================================
+# FEATURE SINK — abstract base class
+# =============================================================
+class FeatureSink(ABC):
+    """
+    Shared contract for every destination the pipeline writes
+    feature rows to. Three concrete sinks implement this:
+    RedisFeatureWriter, S3FeatureWriter, SnowflakeFeatureWriter.
+
+    Why an ABC here, concretely:
+        All three classes do conceptually the same job — accept a
+        batch of rows, get them to their destination — but do it
+        in completely different ways (Redis: dedupe + pipeline;
+        S3: buffer + Parquet flush; Snowflake: row-by-row insert,
+        kept only as a manual fallback). Without a shared base,
+        FraudFeatureEngine would need to know each class's exact
+        method names individually. With it, the engine can treat
+        "a list of sinks" uniformly for anything that applies to
+        all of them — the shutdown sequence below is the real,
+        concrete example: every sink gets flush() called on it
+        the same way, regardless of what flushing even means for
+        that particular sink.
+
+    write_batch is abstract — every subclass MUST implement it,
+    enforced at class-definition time by Python itself (trying to
+    instantiate a subclass that skips it raises TypeError before
+    any code even runs). flush is NOT abstract — it has a default
+    no-op body, because two of the three sinks (Redis, Snowflake)
+    write immediately and have nothing to buffer. This is a
+    legitimate, common pattern: an ABC guarantees a MINIMUM shared
+    contract, not that every method means something for every
+    subclass. A no-op override is a real, honest implementation,
+    not a workaround.
+    """
+
+    @abstractmethod
+    def write_batch(self, rows: List[Dict]) -> None:
+        """Accept a batch of feature rows for this sink to handle."""
+        ...
+
+    def flush(self) -> Optional[str]:
+        """
+        Default: no-op. Sinks that write immediately (Redis,
+        Snowflake) have nothing to flush — this base implementation
+        covers them without either class needing to write empty
+        boilerplate. S3FeatureWriter overrides this with real
+        buffering logic, since it's the one sink that actually
+        accumulates rows before writing.
+        """
+        return None
+
+
+# =============================================================
 # REDIS FEATURE WRITER
 # =============================================================
-class RedisFeatureWriter:
+class RedisFeatureWriter(FeatureSink):
     """
     Writes latest computed features per user to Redis.
     Also serves as the geo-state store — reads last known
@@ -281,6 +404,83 @@ class RedisFeatureWriter:
                 result[user_id] = None
 
         return result
+
+    def get_velocity_batch(self, user_ids: List[str]) -> Dict[str, int]:
+        """
+        Read velocity_15min for MANY users in one Redis round trip.
+
+        Same N+1 fix pattern as get_last_locations_batch — this is
+        the READ side of the velocity-merge: the standalone
+        VelocityEngine query (running concurrently, see
+        FraudFeatureEngine.run()) writes user:{user_id}:velocity
+        independently; this method is how the main feature pipeline
+        picks that value up to fold into the risk score and the
+        feature snapshot, without either query blocking the other.
+
+        Returns:
+            dict mapping user_id -> velocity_15min (0 if no recent
+            velocity data exists yet for that user — e.g. their
+            first transaction, or the velocity query hasn't caught
+            up to this offset yet).
+        """
+        if not self._client or not user_ids:
+            return {}
+
+        unique_user_ids = list(set(user_ids))
+        keys = [f"user:{uid}:velocity" for uid in unique_user_ids]
+
+        try:
+            raw_values = self._client.mget(keys)
+        except Exception as e:
+            logger.warning(f"Redis velocity MGET batch failed: {e}")
+            return {uid: 0 for uid in unique_user_ids}
+
+        result: Dict[str, int] = {}
+        for user_id, raw in zip(unique_user_ids, raw_values):
+            if raw:
+                try:
+                    payload = json.loads(raw)
+                    result[user_id] = int(payload.get("velocity_15min", 0))
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    result[user_id] = 0
+            else:
+                result[user_id] = 0
+
+        return result
+
+    def write_velocity_batch(self, velocity_rows: List[Dict], flag_threshold: int) -> int:
+        """
+        Write velocity window results to Redis in one pipelined call.
+        Called by the velocity query's foreachBatch sink — kept as a
+        proper method here (not a raw _client.pipeline() reach-in from
+        outside the class) so RedisFeatureWriter stays the single
+        place that knows the key naming scheme and connection details.
+
+        Returns the count of users flagged over threshold, for logging.
+        """
+        if not self._client or not velocity_rows:
+            return 0
+
+        pipe = self._client.pipeline()
+        flagged_count = 0
+        for row in velocity_rows:
+            is_flagged = row["velocity_15min"] > flag_threshold
+            if is_flagged:
+                flagged_count += 1
+            payload = {
+                "user_id": row["user_id"],
+                "velocity_15min": row["velocity_15min"],
+                "window_start": row["window_start"],
+                "window_end": row["window_end"],
+                "is_flagged": is_flagged,
+            }
+            pipe.setex(
+                f"user:{row['user_id']}:velocity",
+                self._config.REDIS_TTL_SEC,
+                json.dumps(payload, default=str)
+            )
+        pipe.execute()
+        return flagged_count
 
     def write_features(self, user_id: str, features: Dict) -> None:
         """Write full feature snapshot — agent reads this."""
@@ -386,7 +586,7 @@ class RedisFeatureWriter:
 # =============================================================
 # S3 FEATURE WRITER — buffered Parquet staging for Snowpipe
 # =============================================================
-class S3FeatureWriter:
+class S3FeatureWriter(FeatureSink):
     """
     Accumulates feature rows across micro-batches, then flushes
     them as a single Parquet file to S3. Snowpipe (AUTO_INGEST,
@@ -414,6 +614,21 @@ class S3FeatureWriter:
         self._s3_client = boto3.client("s3", region_name=config.S3_REGION)
         self._buffer: List[Dict] = []
         self._batches_since_flush = 0
+
+    def write_batch(self, rows: List[Dict]) -> None:
+        """
+        FeatureSink interface implementation — this is what makes
+        S3FeatureWriter satisfy the abstract contract. Delegates
+        straight to add_batch(); kept as a separate method (not a
+        rename of add_batch) because "write_batch" is the shared,
+        caller-facing name every sink answers to, while "add_batch"
+        is more accurate about what actually happens here — rows
+        get buffered, not written yet. should_flush()/flush() stay
+        as S3-specific extra API beyond the shared interface, for
+        callers that need to control the buffering cadence
+        explicitly (see FraudFeatureEngine's process_batch).
+        """
+        self.add_batch(rows)
 
     def add_batch(self, rows: List[Dict]) -> None:
         """Add a micro-batch's feature rows to the in-memory buffer."""
@@ -466,7 +681,7 @@ class S3FeatureWriter:
         return key
 
 
-class SnowflakeFeatureWriter:
+class SnowflakeFeatureWriter(FeatureSink):
     """
     Writes feature snapshots to FEATURES.FACT_FEATURE_SNAPSHOTS.
     Called once per micro-batch via foreachBatch.
@@ -736,7 +951,13 @@ class FraudFeatureEngine:
             # Max messages per partition per micro-batch
             # 500K per partition × 12 partitions = 6M max per trigger
             # Keeps micro-batches from being too large on backfill
-            .option("maxOffsetsPerTrigger", 10_000)
+            .option("maxOffsetsPerTrigger", 50_000)
+            # raised from 10K — safe now that both the Redis N+1 fix
+            # and the S3/Snowpipe write path are in place; the driver
+            # Python loop (collect + amount/geo/device math) is the
+            # only remaining per-row cost, and it's fast enough at
+            # this size to not reintroduce the multi-minute-batch
+            # problem from Day 3
             .load()
         )
 
@@ -890,7 +1111,36 @@ class FraudFeatureEngine:
             # a plain in-memory dict lookup (microseconds) instead
             # of a network call (milliseconds) for every row.
             batch_user_ids = [row["user_id"] for row in rows]
+
+            # Timed explicitly so the N+1 fix is directly OBSERVABLE
+            # in logs, not just assumed to have worked. Compare this
+            # timing against len(rows) — if this were still one GET
+            # per row, this duration would scale linearly with batch
+            # size. With MGET, it should stay roughly flat regardless
+            # of batch size (dominated by one network round trip,
+            # not by row count).
+            _redis_fetch_start = time.time()
             last_locations = redis_writer.get_last_locations_batch(batch_user_ids)
+            _redis_fetch_ms = (time.time() - _redis_fetch_start) * 1000
+
+            unique_users = len(set(batch_user_ids))
+            logger.info(
+                f"Redis geo-fetch: {unique_users:,} unique users "
+                f"(from {len(rows):,} transactions) in {_redis_fetch_ms:.1f}ms "
+                f"— 1 MGET call, not {unique_users:,} individual GETs"
+            )
+
+            # ---- Velocity merge: read from the CONCURRENT velocity query ----
+            # The velocity streaming query (started alongside this one in
+            # run()) writes user:{user_id}:velocity independently, on its
+            # own trigger cadence. This fetch is how the main pipeline
+            # picks that value up — same MGET pattern, one round trip
+            # regardless of batch size. Values may lag slightly behind
+            # this exact micro-batch (the two queries are not lockstep)
+            # — that lag is an accepted tradeoff, not a bug: velocity
+            # is a 15-minute signal, a few seconds of staleness doesn't
+            # change the fraud call.
+            velocities = redis_writer.get_velocity_batch(batch_user_ids)
 
             features_list = []
             sf_rows = []
@@ -938,9 +1188,19 @@ class FraudFeatureEngine:
                 user_devices = trusted_devices.get(user_id, set())
                 is_new_device = device_id not in user_devices if device_id else False
 
+                # ---- Velocity (from the concurrent velocity query) ----
+                velocity_15min = velocities.get(user_id, 0)
+
                 # ---- Risk score (weighted heuristic) ----
-                # Each signal normalized to 0-1 before weighting
-                v15 = 0.0  # velocity filled in when we join windows
+                # Each signal normalized to 0-1 before weighting.
+                # velocity_15min is no longer a placeholder — it's the
+                # real count fetched from Redis above, written by the
+                # velocity streaming query running concurrently with
+                # this one. VELOCITY_MAX_NORMAL (5) matches the JP
+                # Morgan-style threshold researched Day 2: >5 txns in
+                # 15 min is already suspicious, so 5 is where this
+                # signal saturates to 1.0, not some arbitrary max.
+                v15 = min(velocity_15min / config.VELOCITY_MAX_NORMAL, 1.0)
                 amt_signal = min(abs(zscore) / config.ZSCORE_MAX_NORMAL, 1.0)
                 geo_signal = min((geo_distance_km or 0) / config.GEO_MAX_NORMAL_KM, 1.0)
                 dev_signal = 1.0 if is_new_device else 0.0
@@ -952,7 +1212,23 @@ class FraudFeatureEngine:
                     config.RISK_WEIGHTS["new_device"]     * dev_signal
                 )
                 risk_score = round(min(risk_score, 1.0), 4)
-                is_flagged = risk_score > config.RISK_FLAG_THRESHOLD
+
+                # ---- Flag decision: weighted score OR hard-rule override ----
+                # A same-weighted additive score can never flag a pure
+                # single-signal fraud pattern (max contribution from
+                # any one signal is its own weight, e.g. 0.25 for geo
+                # alone — never enough to cross 0.60 on its own, no
+                # matter how extreme). The hard rules below catch what
+                # the weighted score structurally cannot: an individual
+                # signal that is severe enough to be suspicious with
+                # zero corroboration needed. See HARD_RULE_* comments
+                # in FeatureEngineConfig for why new_device is excluded.
+                hard_rule_triggered = (
+                    geo_signal >= config.HARD_RULE_GEO_THRESHOLD or
+                    amt_signal >= config.HARD_RULE_AMOUNT_THRESHOLD or
+                    v15        >= config.HARD_RULE_VELOCITY_THRESHOLD
+                )
+                is_flagged = (risk_score > config.RISK_FLAG_THRESHOLD) or hard_rule_triggered
 
                 txn_ts_str = str(row["transaction_ts"]) if row["transaction_ts"] else None
 
@@ -963,9 +1239,15 @@ class FraudFeatureEngine:
                     "user_surrogate_key":     baseline.get("surrogate_key", ""),
                     "computed_at":            datetime.utcnow().isoformat(),
                     "transaction_ts":         txn_ts_str,
-                    # velocity — placeholder, filled after window join
+                    # velocity — 15min comes from the concurrent velocity
+                    # query (fetched via get_velocity_batch above). The
+                    # other three windows (5min, 1hr, 24hr) are defined
+                    # in window_config.VELOCITY_WINDOWS but not yet
+                    # implemented as running queries — 15min was built
+                    # first because it has a sourced production threshold
+                    # (JP Morgan-style, Day 2) to validate against.
                     "velocity_5min":          None,
-                    "velocity_15min":         None,
+                    "velocity_15min":         velocity_15min,
                     "velocity_1hr":           None,
                     "velocity_24hr":          None,
                     # amount
@@ -1019,6 +1301,14 @@ class FraudFeatureEngine:
                     "device_id":                feature_dict["device_id"],
                     "risk_score_raw":           feature_dict["risk_score_raw"],
                     "is_flagged_for_review":    feature_dict["is_flagged_for_review"],
+                    # Ground truth — added Day 4. Without these two
+                    # fields, FACT_FEATURE_SNAPSHOTS has no way to
+                    # measure whether is_flagged_for_review is actually
+                    # correct. This was present in feature_dict (Redis)
+                    # the whole time but never carried through to the
+                    # Snowflake row until this fix.
+                    "is_synthetic_fraud":       feature_dict["is_synthetic_fraud"],
+                    "fraud_pattern":            feature_dict["fraud_pattern"],
                 })
 
             # Write to Redis (online store — agent reads here, always
@@ -1034,7 +1324,12 @@ class FraudFeatureEngine:
             # Parquet file. Snowpipe (AUTO_INGEST via SQS) picks it up from
             # there — no code in this process talks to Snowflake for this
             # write path at all once the file lands in S3.
-            s3_writer.add_batch(sf_rows)
+            # write_batch() here is the shared FeatureSink interface —
+            # same method name Redis just used above, even though the
+            # underlying behavior is completely different (buffer,
+            # don't write yet). This is what polymorphism buys us:
+            # the caller doesn't need to know each sink's own naming.
+            s3_writer.write_batch(sf_rows)
             if s3_writer.should_flush():
                 s3_writer.flush()
 
@@ -1048,35 +1343,119 @@ class FraudFeatureEngine:
         return process_batch
 
     # ----------------------------------------------------------
+    # VELOCITY QUERY — merged into this process, Day 4
+    # ----------------------------------------------------------
+    # This is the "merge" of velocity_engine.py into the main
+    # pipeline: not combining the window math into the SAME query
+    # (Spark's execution model still forbids mixing Complete-mode
+    # windowed aggregation with foreachBatch on a non-aggregated
+    # stream — established Day 2), but running BOTH queries inside
+    # ONE Python process, off ONE SparkSession, so a single
+    # `python feature_engine.py` starts everything instead of
+    # needing two separate terminals.
+    #
+    # The two queries communicate through Redis, not through Spark:
+    # this query writes user:{user_id}:velocity independently on
+    # its own trigger cadence; the main foreachBatch sink (above)
+    # reads it back via get_velocity_batch(). Same pattern as
+    # velocity_engine.py, just running alongside instead of apart.
+    def _compute_velocity_window(self, parsed_df: DataFrame) -> DataFrame:
+        """
+        Sliding 15-minute window count per user. Identical logic to
+        VelocityEngine._compute_velocity() in velocity_engine.py —
+        duplicated here rather than imported because velocity_engine.py
+        builds its own SparkSession internally; sharing the DataFrame
+        transformation logic isn't worth the coupling for one method.
+        The WINDOW DURATIONS themselves are NOT duplicated — both
+        pull from window_config.py, so a threshold change updates
+        both places at once.
+        """
+        return (
+            parsed_df
+            .withWatermark("transaction_ts", _WATERMARK_DELAY)
+            .groupBy(
+                F.col("user_id"),
+                F.window(F.col("transaction_ts"), PRIMARY_WINDOW_DURATION, PRIMARY_SLIDE_DURATION)
+            )
+            .agg(F.count("*").alias("velocity_15min"))
+            .select(
+                F.col("user_id"),
+                F.col("window.start").alias("window_start"),
+                F.col("window.end").alias("window_end"),
+                F.col("velocity_15min"),
+            )
+        )
+
+    def _make_velocity_sink(self):
+        """
+        foreachBatch sink for the velocity query. Writes ONLY to
+        Redis (user:{user_id}:velocity) — no Snowflake, no S3.
+        Velocity is a live signal for the agent, not an audit
+        record in its own right; it's already captured inside the
+        main feature snapshot (velocity_15min field) once the main
+        pipeline reads it back.
+        """
+        redis_writer = self._redis_writer
+        threshold = _VELOCITY_FLAG_THRESHOLD
+
+        def process_velocity_batch(batch_df: DataFrame, batch_id: int) -> None:
+            if batch_df.rdd.isEmpty():
+                logger.info(f"Velocity batch {batch_id}: no window updates")
+                return
+
+            rows = batch_df.collect()
+            velocity_rows = [
+                {
+                    "user_id":       row["user_id"],
+                    "velocity_15min":row["velocity_15min"],
+                    "window_start":  str(row["window_start"]),
+                    "window_end":    str(row["window_end"]),
+                }
+                for row in rows
+            ]
+
+            flagged_count = redis_writer.write_velocity_batch(velocity_rows, threshold)
+
+            logger.info(
+                f"Velocity batch {batch_id}: {len(rows):,} window updates | "
+                f"{flagged_count:,} users over threshold (>{threshold} txns/15min)"
+            )
+
+        return process_velocity_batch
+
+    # ----------------------------------------------------------
     # RUN
     # ----------------------------------------------------------
     def run(self) -> None:
         """
-        Wire everything together and start the streaming job.
+        Wire everything together and start BOTH streaming queries.
 
         Flow:
-            1. Build Spark session
+            1. Build Spark session (ONE session, shared by both queries)
             2. Load user baselines from Snowflake → in-memory dict
             3. Connect to Redis
-            4. Read Kafka stream
-            5. Parse JSON → typed DataFrame
-            6. Apply foreachBatch sink (geo + amount + device + risk)
-            7. Start query, await termination
+            4. Read Kafka stream, parse once
+            5. Start the MAIN query: amount/geo/device/risk →
+               Redis (every batch) + S3/Snowpipe (buffered)
+            6. Start the VELOCITY query: sliding window count →
+               Redis only
+            7. awaitAnyTermination() — wait on whichever query
+               finishes or fails first, since normally neither
+               ever finishes (both run forever)
 
-        Note on velocity:
-            Velocity (sliding window) computation requires a separate
-            streaming query because Complete output mode (needed for
-            windows) can't be mixed with foreachBatch in the same query.
-            Phase 1 implementation computes amount/geo/device features
-            now and adds velocity as a second streaming query in the
-            next step. This is intentional — understand one part fully
-            before adding the next.
+        Why parsed_df is built ONCE and reused for both queries:
+            Both queries read the same Kafka topic. Spark supports
+            multiple independent streaming queries derived from the
+            same source DataFrame — each gets its own consumer
+            group and its own checkpoint, so they don't interfere
+            with each other's offset tracking, but they don't
+            duplicate the Kafka read/parse code either.
         """
         logger.info("=" * 60)
-        logger.info("FRAUD FEATURE ENGINE STARTING")
+        logger.info("FRAUD FEATURE ENGINE STARTING (main + velocity, merged)")
         logger.info("=" * 60)
 
-        # Step 1 — Spark
+        # Step 1 — Spark (shared by both queries)
         self._spark = self._build_spark_session()
 
         # Step 2 — Load baselines
@@ -1086,41 +1465,67 @@ class FraudFeatureEngine:
         self._redis_writer.connect()
 
         # Step 3b — test Snowflake before starting stream
-        # Fail fast here with a clear error rather than silently
-        # failing on every micro-batch with buried log messages
         logger.info("Testing Snowflake connectivity...")
         self._sf_writer.test_connection()
-        logger.info("Snowflake OK — starting stream")
+        logger.info("Snowflake OK — starting streams")
 
-        # Step 4+5 — Kafka → parse
+        # Step 4 — Kafka → parse (once, shared)
         raw_df    = self._read_kafka_stream()
         parsed_df = self._parse_transactions(raw_df)
 
-        # Step 6 — Start streaming query
-        query = (
+        # Step 5 — Main query
+        main_query = (
             parsed_df.writeStream
             .foreachBatch(self._make_foreachbatch_sink())
             .option("checkpointLocation", self._config.CHECKPOINT_DIR)
             .trigger(processingTime=self._config.TRIGGER_INTERVAL)
             .start()
         )
+        logger.info(f"Main query started. Checkpoint: {self._config.CHECKPOINT_DIR}")
 
-        logger.info(f"Streaming query started. Trigger: {self._config.TRIGGER_INTERVAL}")
-        logger.info(f"Checkpoint: {self._config.CHECKPOINT_DIR}")
-        logger.info("Consuming from Kafka... (Ctrl+C to stop)")
+        # Step 6 — Velocity query (independent, same Kafka source)
+        velocity_df = self._compute_velocity_window(parsed_df)
+        velocity_query = (
+            velocity_df.writeStream
+            .foreachBatch(self._make_velocity_sink())
+            .outputMode("update")
+            .option("checkpointLocation", self._config.VELOCITY_CHECKPOINT_DIR)
+            .trigger(processingTime=self._config.TRIGGER_INTERVAL)
+            .start()
+        )
+        logger.info(f"Velocity query started. Checkpoint: {self._config.VELOCITY_CHECKPOINT_DIR}")
+
+        logger.info("Both queries running concurrently. (Ctrl+C to stop)")
         logger.info("Monitor at: http://localhost:4040 (Spark UI)")
 
         try:
-            query.awaitTermination()
+            self._spark.streams.awaitAnyTermination()
         except KeyboardInterrupt:
-            logger.info("Stopping feature engine...")
-            query.stop()
-            # Flush any buffered rows still sitting in memory —
-            # otherwise up to FLUSH_EVERY_N_BATCHES micro-batches
-            # of features would be silently lost on shutdown.
-            remaining_key = self._s3_writer.flush()
-            if remaining_key:
-                logger.info(f"Final flush on shutdown: {remaining_key}")
+            logger.info("Stopping feature engine (both queries)...")
+            main_query.stop()
+            velocity_query.stop()
+
+            # ---- Polymorphic shutdown — the real payoff of FeatureSink ----
+            # Every sink gets flush() called on it the SAME way, through
+            # the shared FeatureSink interface, regardless of what
+            # flushing means for that particular sink. Redis and
+            # Snowflake write immediately, so their flush() is the
+            # inherited no-op — calling it costs nothing and is
+            # harmless. S3 is the one sink with something real to do
+            # here (its overridden flush() writes any buffered rows
+            # that haven't hit FLUSH_EVERY_N_BATCHES yet). The caller
+            # doesn't need an if/else per sink type to know that —
+            # that's what the shared base class buys us.
+            sinks: List[FeatureSink] = [
+                self._redis_writer,
+                self._sf_writer,
+                self._s3_writer,
+            ]
+            for sink in sinks:
+                result = sink.flush()
+                if result:
+                    logger.info(f"Final flush on shutdown ({type(sink).__name__}): {result}")
+
             logger.info("Feature engine stopped.")
 
 
