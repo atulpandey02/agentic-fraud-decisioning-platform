@@ -312,6 +312,16 @@ class FeatureSink(ABC):
         """
         return None
 
+    def close(self) -> None:
+        """
+        Default: no-op. The other half of "open once, reuse, close
+        when done" — sinks holding a real connection (currently
+        SnowflakeFeatureWriter; S3FeatureWriter's boto3 client is
+        stateless enough not to need this) override it to release
+        that connection cleanly on shutdown.
+        """
+        return None
+
 
 # =============================================================
 # REDIS FEATURE WRITER
@@ -691,39 +701,75 @@ class SnowflakeFeatureWriter(FeatureSink):
         foreachBatch gives us a regular DataFrame per trigger
         that we can write using the Snowflake Spark connector
         or direct JDBC — we use direct connector for control.
+
+    Connection reuse — NOT a Singleton, and why that distinction
+    matters:
+        Each micro-batch used to open a brand new Snowflake
+        connection and close it immediately after — real, avoidable
+        overhead, since it's always the SAME instance being called
+        sequentially by the main query's foreachBatch (Spark never
+        runs two micro-batches of the same query concurrently).
+        So this class now lazily caches one connection and reuses
+        it across calls, reconnecting only if it's been closed or
+        dropped.
+
+        This is deliberately an INSTANCE-level cache, not a class-
+        level Singleton. A Singleton would mean this one connection
+        is shared globally, including by code that has no business
+        touching it — dangerous the moment two things could call it
+        concurrently (this process runs two concurrent Spark
+        queries; if the velocity query ever needed Snowflake too,
+        sharing this same connection object across both would risk
+        corrupted results, since snowflake-connector-python
+        connections aren't safe for concurrent use across threads).
+        Keeping it as a private attribute on ONE instance, used by
+        ONE caller, is what makes the reuse safe.
     """
 
     def __init__(self, config: FeatureEngineConfig):
         self._config = config
+        self._conn = None  # lazily created, reused across calls
 
     def _get_connection(self):
-        return snowflake.connector.connect(
-            account=self._config.SNOWFLAKE_ACCOUNT,
-            user=self._config.SNOWFLAKE_USER,
-            password=self._config.SNOWFLAKE_PASSWORD,
-            database=self._config.SNOWFLAKE_DATABASE,
-            warehouse=self._config.SNOWFLAKE_WAREHOUSE,
-            role=self._config.SNOWFLAKE_ROLE,
-            schema="FEATURES",
-        )
+        """
+        Return the cached connection if it's still alive; open a
+        fresh one otherwise. is_closed() catches the case where
+        Snowflake itself dropped the session (idle timeout, network
+        blip) — reconnecting here means one bad connection doesn't
+        permanently break every future write for the rest of the run.
+        """
+        if self._conn is None or self._conn.is_closed():
+            logger.info("Opening Snowflake connection (none cached, or previous one closed)")
+            self._conn = snowflake.connector.connect(
+                account=self._config.SNOWFLAKE_ACCOUNT,
+                user=self._config.SNOWFLAKE_USER,
+                password=self._config.SNOWFLAKE_PASSWORD,
+                database=self._config.SNOWFLAKE_DATABASE,
+                warehouse=self._config.SNOWFLAKE_WAREHOUSE,
+                role=self._config.SNOWFLAKE_ROLE,
+                schema="FEATURES",
+            )
+        return self._conn
 
     def test_connection(self) -> None:
         """
         Test Snowflake connectivity and table existence at startup.
         Fails fast with a clear error rather than silently failing
         on every micro-batch. Called once before stream starts.
+        Deliberately does NOT close the connection afterward — this
+        is the same cached connection write_batch() will reuse.
         """
         conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM FEATURES.FACT_FEATURE_SNAPSHOTS")
-            count = cursor.fetchone()[0]
-            logger.info(f"Snowflake connection OK — FACT_FEATURE_SNAPSHOTS has {count} rows")
-        finally:
-            conn.close()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM FEATURES.FACT_FEATURE_SNAPSHOTS")
+        count = cursor.fetchone()[0]
+        logger.info(f"Snowflake connection OK — FACT_FEATURE_SNAPSHOTS has {count} rows")
 
     def write_batch(self, features_list: list) -> None:
-        """Batch insert feature snapshots into Snowflake."""
+        """
+        Batch insert feature snapshots into Snowflake.
+        Reuses the cached connection — no open/close per call.
+        """
         if not features_list:
             return
 
@@ -761,11 +807,30 @@ class SnowflakeFeatureWriter(FeatureSink):
         except Exception as e:
             conn.rollback()
             # Re-raise so the error surfaces in foreachBatch
-            # and is visible in logs — not silently swallowed
+            # and is visible in logs — not silently swallowed.
+            # Deliberately does NOT close the connection here —
+            # a query-level failure (bad SQL, constraint violation)
+            # doesn't mean the connection itself is broken. Closing
+            # it would force an unnecessary reconnect on the very
+            # next batch. is_closed() in _get_connection() already
+            # handles the case where the connection itself died.
             logger.error(f"Snowflake write FAILED: {e}")
             raise
-        finally:
-            conn.close()
+
+    def close(self) -> None:
+        """
+        FeatureSink lifecycle hook — closes the cached connection
+        on shutdown. This is the "close it once everyone's done"
+        half of the pattern: safe here specifically because this
+        instance has exactly one caller (the main query's
+        foreachBatch, called sequentially), so there's no risk of
+        another thread reaching for this connection after it's
+        closed.
+        """
+        if self._conn is not None and not self._conn.is_closed():
+            self._conn.close()
+            logger.info("Snowflake connection closed.")
+            self._conn = None
 
 
 # =============================================================
@@ -1521,10 +1586,15 @@ class FraudFeatureEngine:
                 self._sf_writer,
                 self._s3_writer,
             ]
+            # Flush first, close second — flushing a sink that's
+            # already closed would fail, so the order matters even
+            # though each individual call is polymorphic.
             for sink in sinks:
                 result = sink.flush()
                 if result:
                     logger.info(f"Final flush on shutdown ({type(sink).__name__}): {result}")
+            for sink in sinks:
+                sink.close()
 
             logger.info("Feature engine stopped.")
 

@@ -1,0 +1,13 @@
+# =============================================================
+# RAG / RETRIEVAL LAYER — Phase 2
+# Install with: pip install -r requirements-rag.txt
+# (after requirements.txt — kept separate per our established
+# pattern of isolating dependency groups to avoid the langchain/
+# langgraph version conflict we hit in Phase 1)
+# =============================================================
+weaviate-client==4.9.6
+sentence-transformers==3.3.1
+# sentence-transformers pulls in torch as a dependency — this is
+# a genuinely heavy install (500MB+). No way around it for local
+# embedding; this is the cost of not calling an external embedding
+# API for every chunk and every query.

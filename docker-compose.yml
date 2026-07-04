@@ -1,6 +1,7 @@
 # =============================================================
 # AGENTIC FRAUD DECISIONING PLATFORM — Docker Compose
 # Phase 1: Kafka (KRaft) + Spark + Redis + Kafka UI
+# Phase 2: Weaviate (RAG vector store)
 # =============================================================
 # Port map:
 #   Kafka broker:     9092 (external)
@@ -11,6 +12,8 @@
 #   Spark Worker UI:  9091
 #   Spark Master:     7077
 #   Redis:            6379
+#   Weaviate REST:    8090
+#   Weaviate gRPC:    50051 (required by weaviate-client v4)
 # =============================================================
 
 networks:
@@ -21,6 +24,7 @@ volumes:
   kafka_data:
   redis_data:
   spark_data:
+  weaviate_data:
 
 services:
 
@@ -171,3 +175,46 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # -----------------------------------------------------------
+  # WEAVIATE — Vector store for fraud policy docs (Phase 2)
+  #
+  # DEFAULT_VECTORIZER_MODULE: 'none' — deliberate choice. We
+  # embed text ourselves in Python (all-MiniLM-L6-v2, same model
+  # as prior RAG project) and upload vectors directly, rather
+  # than letting Weaviate call an external embedding API. This
+  # keeps embedding logic in one place we control and test, and
+  # means Weaviate needs zero internet access or API keys to run.
+  #
+  # Hybrid search (BM25 + vector) is NATIVE to Weaviate — it
+  # doesn't need a module or extra config to use it, unlike
+  # Pinecone where sparse/dense score balancing is manual.
+  #
+  # gRPC port (50051) is required by the v4 Python client even
+  # though most operations still go over REST (8090 here, since
+  # 8080 is already taken by Kafka UI).
+  # -----------------------------------------------------------
+  weaviate:
+    image: semitechnologies/weaviate:1.25.4
+    container_name: fraud-weaviate
+    hostname: weaviate
+    networks:
+      - fraud-net
+    ports:
+      - "8090:8080"
+      - "50051:50051"
+    environment:
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      ENABLE_MODULES: ""
+      CLUSTER_HOSTNAME: "node1"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/v1/.well-known/ready"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
