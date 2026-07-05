@@ -110,7 +110,47 @@ legitimate transactions the hard rules had flagged — live confirmation of the
 flag-rate observation under Phase 1, and exactly the accuracy signal
 `run_demo.py`'s pattern-match check was built to surface for Phase 6.
 
-### Phase 4 — Multi-agent orchestrator — **NOT STARTED** (all 7 files are 0 bytes)
+### Phase 4 — Multi-agent orchestrator — **DONE, verified end to end** (built 2026-07-05)
+
+**Architecture — supervisor pattern with code guardrails:**
+`agents/multi_agent/` — an orchestrator node routes between four specialists,
+each a focused single-LLM-call worker, over a shared typed blackboard
+(`MultiAgentState`):
+
+- `feature_agent` — deterministic feature fetch + LLM read of which signals
+  are elevated (machine-readable `elevated_patterns` drives everything downstream)
+- `risk_agent` — user-baseline fetch + per-user anomaly read; sets
+  `is_borderline`, which biases the final decision toward ESCALATE
+- `policy_agent` — one Weaviate hybrid search *per elevated pattern* (using
+  Phase 2's pattern filter), LLM condenses to applicable rules with thresholds quoted
+- `decision_agent` — terminal; synthesizes the blackboard, no tools by design
+  (evidence-gathering and deciding are deliberately separated concerns)
+
+**The key design decisions to learn from (full "why" docstrings in each file):**
+1. **Specialists are not mini-ReAct loops.** Each runs its tool
+   unconditionally in code, then makes ONE focused LLM call. Autonomy lives
+   only in the orchestrator (whether a specialist runs at all) — cheaper and
+   more reliable than asking a model to decide to do the only thing it exists to do.
+2. **LLM routing + code invariants.** The router LLM chooses order and skips;
+   code enforces what must always hold: each specialist at most once, *no
+   decision without policy grounding* (Phase 3 had this as a prompt rule the
+   model could ignore; here it is structurally impossible to violate), and an
+   `ORCHESTRATOR_MAX_STEPS` cap. Same philosophy as Phase 1's two-tier scoring.
+3. **Config layering via importlib.** `multi_agent/config.py` loads Phase 3's
+   config *by file path* under a private module name and re-exports its
+   constants — reuse without either renaming the per-phase `config.py`
+   convention or copying values that would drift.
+4. **One tool bridge, constructor injection.** orchestrator.py is the single
+   place that imports Phase 3's three tools; specialists get them injected —
+   no cross-phase import mechanics in specialist files, trivially stubable.
+
+**Verified:** two end-to-end runs with genuinely different routing. Run 1
+(clear-cut): feature → policy → decision, risk_agent *skipped*, ALLOW at 0.8 —
+correctly allowing a ground-truth-legit flagged row (Phase 3's monolith blocked
+a comparable one). Run 2 (borderline GEO_JUMP): all four specialists,
+ESCALATE at 0.6. Also fixed a real comparison bug found during verification:
+both demos compared the agent's `"NONE"` pattern string against SQL `NULL`
+ground truth, mis-reporting every correct no-pattern verdict as a mismatch.
 ### Phase 5 — Governance / HITL — **NOT STARTED** (`governance/*.py` 0 bytes; schema columns exist in FACT_DECISIONS, unused)
 ### Phase 6 — Observability + evaluation — **NOT STARTED** (`observability/*.py` 0 bytes; eval columns exist in FACT_DECISIONS, unused; LANGSMITH_API_KEY present in .env but unused)
 ### Phase 7 — Agentic BI dashboard — **NOT STARTED** (`bi_dashboard/*.py` 0 bytes; `requirements_bi.txt` exists)

@@ -1,30 +1,36 @@
 # =============================================================
-# DEMO RUNNER — evaluate one real flagged transaction
+# DEMO RUNNER — one real flagged transaction through the team
 # =============================================================
-# Pulls an actual flagged row from FEATURES.FACT_FEATURE_SNAPSHOTS
-# (produced by Phase 1's feature engine) rather than using a
-# fabricated example — this is a genuine end-to-end test against
-# real data the platform actually computed.
+# Same fetch as Phase 3's run_demo.py: a real flagged row from
+# FEATURES.FACT_FEATURE_SNAPSHOTS with ground truth held back.
+# The fetch function is DUPLICATED from Phase 3 rather than
+# imported — importing it would pull single_agent/run_demo.py,
+# whose `from agent import ...` would collide with this phase's
+# module names (the same by-name caching issue the config
+# layering and tool bridge already navigate). Forty lines of
+# straightforward SQL is under the "reuse conventions, not code"
+# threshold tools.py's header established for cross-phase reuse.
+#
+# What this demo shows beyond Phase 3's: the ROUTING — which
+# specialists the orchestrator chose, in what order, what it
+# skipped, and why (the narrative log carries each handoff
+# rationale).
 # =============================================================
 
 import logging
 import snowflake.connector
 
 import config
-from agent import FraudDecisioningAgent
+from orchestrator import FraudOrchestrator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
 logger = logging.getLogger(__name__)
 
 
 def fetch_sample_flagged_transaction() -> dict:
-    """
-    Pull one real flagged transaction with all the fields the
-    agent needs, plus the fraud_pattern ground truth column (Day 4
-    fix) so we can compare the agent's own identified_pattern
-    against what actually happened — a real accuracy check, not
-    just "did it run without crashing."
-    """
+    """One real flagged transaction + held-back ground truth
+    (identical contract to Phase 3's fetch — see module header
+    for why it's duplicated, not imported)."""
     conn = snowflake.connector.connect(
         account=config.SNOWFLAKE_ACCOUNT,
         user=config.SNOWFLAKE_USER,
@@ -62,7 +68,7 @@ def fetch_sample_flagged_transaction() -> dict:
             "transaction_id": record["transaction_id"],
             "user_id": record["user_id"],
             "amount": float(record["txn_amount"]),
-            "merchant_category": "UNKNOWN",  # not in FACT_FEATURE_SNAPSHOTS — acceptable gap for this demo
+            "merchant_category": "UNKNOWN",  # not in FACT_FEATURE_SNAPSHOTS — same accepted gap as Phase 3
             "city": "UNKNOWN",
             "country": "UNKNOWN",
             "risk_score_raw": float(record["risk_score_raw"]),
@@ -71,9 +77,6 @@ def fetch_sample_flagged_transaction() -> dict:
             "geo_distance_km": record["geo_distance_km"],
             "amount_zscore": record["amount_zscore"],
             "velocity_15min": record["velocity_15min"],
-            # ground truth, kept SEPARATE from what's given to the agent —
-            # the agent never sees these two fields, they're only used
-            # afterward to check the agent's own conclusion
             "_ground_truth_is_fraud": bool(record["is_synthetic_fraud"]),
             "_ground_truth_pattern": record["fraud_pattern"],
         }
@@ -90,23 +93,38 @@ def main():
 
     logger.info(f"Transaction: {transaction['transaction_id']}")
     logger.info(f"Ground truth: is_fraud={ground_truth_fraud}, pattern={ground_truth_pattern}")
-    logger.info("(the agent below does NOT see these two ground truth values)")
+    logger.info("(no agent below sees these two ground truth values)")
 
-    logger.info("Building agent...")
-    agent = FraudDecisioningAgent()
+    logger.info("Building orchestrator + specialists...")
+    orchestrator = FraudOrchestrator()
 
-    logger.info("Running ReAct loop...")
-    result = agent.evaluate(transaction, thread_id=transaction["transaction_id"])
+    logger.info("Running multi-agent flow...")
+    result = orchestrator.evaluate(transaction, thread_id=transaction["transaction_id"])
 
     print("\n" + "=" * 70)
-    print("AGENT DECISION")
+    print("ORCHESTRATION TRACE (who ran, in order, and why)")
     print("=" * 70)
+    for msg in result["messages"]:
+        name = getattr(msg, "name", None)
+        if name == "orchestrator":
+            print(f"\n  [{name}] {msg.content}")
+        elif name:
+            preview = msg.content.replace("\n", " ")
+            print(f"    [{name}] {preview[:160]}{'...' if len(preview) > 160 else ''}")
+
+    print("\n" + "=" * 70)
+    print("TEAM DECISION")
+    print("=" * 70)
+    print(f"Specialists invoked:  {' -> '.join(result['agents_invoked'])}")
+    skipped = [a for a in config.SPECIALIST_AGENTS if a not in result["agents_invoked"]]
+    print(f"Specialists skipped:  {skipped or 'none'}")
     print(f"Decision:            {result['decision']}")
     print(f"Confidence:          {result['confidence_score']}")
     print(f"Identified pattern:  {result['identified_pattern']}")
     print(f"Reasoning:\n{result['reasoning_text']}")
+
     print("\n" + "=" * 70)
-    print("GROUND TRUTH (agent did not see this)")
+    print("GROUND TRUTH (no agent saw this)")
     print("=" * 70)
     print(f"Was actually fraud:  {ground_truth_fraud}")
     print(f"Actual pattern:      {ground_truth_pattern}")
