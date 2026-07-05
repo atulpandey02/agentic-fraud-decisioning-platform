@@ -151,7 +151,48 @@ a comparable one). Run 2 (borderline GEO_JUMP): all four specialists,
 ESCALATE at 0.6. Also fixed a real comparison bug found during verification:
 both demos compared the agent's `"NONE"` pattern string against SQL `NULL`
 ground truth, mis-reporting every correct no-pattern verdict as a mismatch.
-### Phase 5 — Governance / HITL — **NOT STARTED** (`governance/*.py` 0 bytes; schema columns exist in FACT_DECISIONS, unused)
+### Phase 5 — Governance / HITL — **DONE, verified end to end** (built 2026-07-05)
+
+**The core idea:** the agent decides *what* should happen (ALLOW/BLOCK/ESCALATE);
+governance decides *how much autonomy* that decision gets. The two judgments are
+deliberately separated — the agent should not be the arbiter of its own
+trustworthiness, and the autonomy rules are deterministic code (not another LLM
+call) because "why did this auto-execute?" must be answerable with a rule
+citation, not a probability.
+
+**Built:**
+- `governance/policy_framework.py` — `GovernancePolicyFramework.assign_tier()`
+  maps (decision, confidence, amount) → tier, reasoning from asymmetric error
+  costs: a false ALLOW is unrecoverable money (so silence is capped by value —
+  `AUTO_ALLOW_MAX_AMOUNT`), a false BLOCK is a recoverable inconvenience (so it
+  executes but is always surfaced), and human attention is the scarce resource
+  (so the SUGGEST queue holds only escalations and low-confidence calls —
+  `GOVERNANCE_CONFIDENCE_FLOOR = 0.75`).
+- `governance/hitl_handler.py` — `HITLHandler`, the **single owner of all
+  DECISIONS.FACT_DECISIONS writes**: `persist_decision()` (a decision row is
+  born complete, WITH its tier — persistence lives in governance, not in the
+  agents, so no partial-row window exists), `pending_reviews()` (age-ordered
+  SUGGEST queue), `record_review()` (human CONFIRMED/OVERRIDDEN/ESCALATED
+  verdicts — which accumulate as free human-labeled eval data for Phase 6).
+- `governance/config.py` — second layer of the importlib config chain
+  (governance ⊃ multi_agent ⊃ single_agent).
+- `governance/run_demo.py` — full loop: orchestrate → tier → persist → queue →
+  simulated human review.
+
+**This is the phase where decisions first became durable** — until now every
+decision died with its process (MemorySaver's documented limitation).
+
+**Verified:** run 1 — confident BLOCK (0.95, GEO_JUMP) → NOTIFY_ONLY, persisted,
+bypassed the queue correctly. Run 2 — ESCALATE (0.6) → SUGGEST → appeared in the
+queue → review recorded → queue drained to 0. Read back from Snowflake: both
+rows complete with tier, latency_ms, and the reviewed row carrying
+human_outcome=CONFIRMED.
+
+**Open item:** applying `rbac.sql` (creating AGENT_ROLE / BI_ROLE) was blocked
+by the execution environment's permission policy — account-level role creation
+needs the owner to run it. Run `snowflake/rbac.sql` in a Snowflake worksheet as
+ACCOUNTADMIN to close it; the code already honors the intended boundaries by
+discipline (governance touches only the DECISIONS schema).
 ### Phase 6 — Observability + evaluation — **NOT STARTED** (`observability/*.py` 0 bytes; eval columns exist in FACT_DECISIONS, unused; LANGSMITH_API_KEY present in .env but unused)
 ### Phase 7 — Agentic BI dashboard — **NOT STARTED** (`bi_dashboard/*.py` 0 bytes; `requirements_bi.txt` exists)
 
