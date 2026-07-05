@@ -1,14 +1,37 @@
 # =============================================================
 # AGENTS — Phase 3+
-# Install with: pip install -r requirements-agents.txt
-# (after requirements.txt — these build on the core deps)
+# Install with: pip install -r requirements_agents.txt
+# (after requirements.txt and requirements-rag.txt)
 # =============================================================
-langgraph==0.0.55
-langchain-groq==0.1.3
-langsmith==0.1.63
-# Note: langgraph 0.0.55 pulls in langchain-core>=0.2,<0.3
-# which conflicts with langchain==0.1.20 (needs core<0.2).
-# We intentionally do NOT pin top-level "langchain" here —
-# langgraph + langchain-core + langchain-groq is enough for
-# Phase 3-4. If full langchain (agents, chains) is needed later,
-# resolve version compatibility at that time, not now.
+# langgraph pinned exactly — confirmed working.
+# langchain-core moved to the 1.x line — the old >=0.3,<0.4
+# range was UNSATISFIABLE alongside langgraph==1.0.10: langgraph
+# 1.0.10 requires langgraph-prebuilt>=1.0.8, and every prebuilt
+# release in that range hard-requires langchain-core>=1.0.0.
+# pip's ResolutionImpossible error never named that transitive
+# edge directly — it only showed langchain-groq candidates being
+# rejected one by one — which is why this looked like a
+# langchain-groq problem for two failed attempts. Verified by
+# reading langgraph-prebuilt's own requires_dist on PyPI, not by
+# guessing a fourth version range.
+# langchain-groq and langsmith stay COMPLETELY unpinned (same
+# reasoning as before: two guessed ranges both turned out wrong;
+# langchain-core's own bound now anchors the resolver, so pip
+# picks the compatible 1.x releases itself).
+# Resolved set confirmed installing + running end to end on
+# 2026-07-05: langchain-core 1.4.8, langchain-groq 1.1.3,
+# langsmith 0.9.7, groq 0.37.1 — with `pip check` clean against
+# the Phase 1/2 packages (weaviate-client, sentence-transformers).
+langgraph==1.0.10
+# langgraph-prebuilt pinned exactly because langgraph 1.0.10's own
+# bound (>=1.0.8,<1.1.0) is BROKEN upstream: prebuilt 1.0.9-1.0.13
+# all import ExecutionInfo from langgraph.runtime, which doesn't
+# exist until a later langgraph — so pip's "compatible" resolution
+# dies at import time with ImportError, not at install time.
+# 1.0.8 is the only release in the allowed range that actually
+# works against langgraph 1.0.10; found by bisecting downward and
+# import-testing each candidate, not by guessing.
+langgraph-prebuilt==1.0.8
+langchain-core>=1.0,<2.0
+langchain-groq
+langsmith
