@@ -197,6 +197,7 @@ class FraudOrchestrator:
                 f"Policy guidance: {state.get('policy_guidance') or '(not gathered)'}\n\n"
                 f"Transaction basics: ${state['amount']}, velocity_15min="
                 f"{state['velocity_15min']}, geo_distance_km={state['geo_distance_km']}, "
+                f"time_since_last_txn_min={state.get('time_since_last_txn_min')}, "
                 f"amount_zscore={state['amount_zscore']}, is_new_device={state['is_new_device']}."
             )
             route: RouteDecision = self._router_llm.invoke([
@@ -290,6 +291,7 @@ class FraudOrchestrator:
             "is_flagged_for_review": transaction["is_flagged_for_review"],
             "is_new_device": transaction["is_new_device"],
             "geo_distance_km": transaction.get("geo_distance_km"),
+            "time_since_last_txn_min": transaction.get("time_since_last_txn_min"),
             "amount_zscore": transaction.get("amount_zscore"),
             "velocity_15min": transaction.get("velocity_15min"),
             "feature_findings": None,

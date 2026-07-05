@@ -61,6 +61,12 @@ class MultiAgentState(TypedDict):
     is_flagged_for_review: bool
     is_new_device: bool
     geo_distance_km: Optional[float]
+    # Added after PATTERN_ID_INVESTIGATION.md: GEO_JUMP is a speed
+    # judgment, so the distance is uninterpretable without the time
+    # elapsed. Negative/missing means out-of-order state — the
+    # paired geo_distance_km is then unreliable, which the feature
+    # specialist's prompt explains how to handle.
+    time_since_last_txn_min: Optional[float]
     amount_zscore: Optional[float]
     velocity_15min: Optional[int]
 

@@ -1,0 +1,5 @@
+# =============================================================
+# DEV / TEST — not needed at runtime
+# Install with: pip install -r requirements-dev.txt
+# =============================================================
+pytest==8.3.4

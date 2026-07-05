@@ -52,6 +52,14 @@ class AgentState(TypedDict):
     is_flagged_for_review: bool
     is_new_device: bool
     geo_distance_km: Optional[float]
+    # Time between this and the user's previous transaction. Added
+    # after PATTERN_ID_INVESTIGATION.md: a GEO_JUMP judgment is a
+    # SPEED judgment (distance over time), and without this field
+    # the agent was structurally unable to make it — 1,335km reads
+    # as a jump when you can't see it happened over three days.
+    # Negative values are themselves signal: out-of-order state,
+    # meaning the paired geo_distance_km is unreliable.
+    time_since_last_txn_min: Optional[float]
     amount_zscore: Optional[float]
     velocity_15min: Optional[int]
 

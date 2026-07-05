@@ -35,8 +35,13 @@ features and report which signals are elevated and which are normal.
 
 The four patterns this platform detects, and their key signals:
 - VELOCITY_SPIKE: velocity_15min above 5 transactions
-- GEO_JUMP: geo_distance_km large relative to time elapsed (>500km is notable,
-  implied speed >900 km/h is physically impossible travel)
+- GEO_JUMP: a SPEED judgment, not a distance judgment — divide
+  geo_distance_km by time_since_last_txn_min to get implied speed; above
+  900 km/h is physically impossible travel. A large distance over hours or
+  days is ordinary travel, not a jump. If time_since_last_txn_min is
+  NEGATIVE or missing, the location state is out-of-order and the
+  geo_distance_km value is UNRELIABLE — say so explicitly rather than
+  treating it as travel evidence.
 - NEW_DEVICE: is_new_device true (supporting signal only, weak alone)
 - AMOUNT_ANOMALY: amount_zscore beyond ±3, or suspiciously round
   card-testing amounts ($1.00, $5.00) / threshold-evasion amounts ($99.99, $499.99)
@@ -101,6 +106,7 @@ class FeatureAgent:
                 f"amount: ${state['amount']}\n"
                 f"velocity_15min: {state['velocity_15min']}\n"
                 f"geo_distance_km: {state['geo_distance_km']}\n"
+                f"time_since_last_txn_min: {state.get('time_since_last_txn_min')}\n"
                 f"amount_zscore: {state['amount_zscore']}\n"
                 f"is_new_device: {state['is_new_device']}\n"
                 f"pre-computed risk_score: {state['risk_score_raw']}\n\n"

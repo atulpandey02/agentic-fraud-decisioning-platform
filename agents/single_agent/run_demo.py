@@ -40,7 +40,8 @@ def fetch_sample_flagged_transaction() -> dict:
             """
             SELECT transaction_id, user_id, txn_amount,
                    risk_score_raw, is_flagged_for_review, is_new_device,
-                   geo_distance_km, amount_zscore, velocity_15min,
+                   geo_distance_km, time_since_last_txn_min,
+                   amount_zscore, velocity_15min,
                    is_synthetic_fraud, fraud_pattern
             FROM FEATURES.FACT_FEATURE_SNAPSHOTS
             WHERE is_flagged_for_review = TRUE
@@ -69,6 +70,7 @@ def fetch_sample_flagged_transaction() -> dict:
             "is_flagged_for_review": bool(record["is_flagged_for_review"]),
             "is_new_device": bool(record["is_new_device"]),
             "geo_distance_km": record["geo_distance_km"],
+            "time_since_last_txn_min": record["time_since_last_txn_min"],
             "amount_zscore": record["amount_zscore"],
             "velocity_15min": record["velocity_15min"],
             # ground truth, kept SEPARATE from what's given to the agent —

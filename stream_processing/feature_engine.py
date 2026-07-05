@@ -130,11 +130,38 @@ class FeatureEngineConfig:
     # positives on ordinary behavior. It stays a WEIGHTED signal
     # only — it can help push a combined score over threshold,
     # but never triggers a flag by itself.
+    #
+    # GEO HARD RULE REVISED (see GEO_FLAGGING_INVESTIGATION.md):
+    # the original geo override (geo_signal >= 0.95, i.e. distance
+    # >= 475km) alone produced 75% of all flags at 17.3% precision
+    # — 475km is DOMESTIC-travel distance, not impossible travel.
+    # The production concept is implied SPEED (>900 km/h), which
+    # this pipeline always computed but never used in scoring.
+    # The rule is now composite:
+    #   speed arm    — implied speed > 900 km/h, with a 100km
+    #                  distance floor so meter-scale GPS jitter
+    #                  over second-scale deltas can't fabricate
+    #                  supersonic "speeds";
+    #   distance arm — >= 3000km, true intercontinental-jump
+    #                  scale (the generator's minimum injected
+    #                  jump is 5000km; normal domestic travel
+    #                  tops out ~500km — 3000 splits them with
+    #                  margin), kept because 80% of rows lack a
+    #                  usable time delta and the speed arm alone
+    #                  would drop GEO_JUMP recall from 99% to 9%.
+    # Measured on the full 1M-row history: flag rate 44.4% ->
+    # 26.6%, precision 33.3% -> 52.6%, GEO_JUMP recall 99.2% ->
+    # 98.9% — before counting the two state-hygiene guards (see
+    # process_batch and RedisFeatureWriter), which remove the
+    # corruption the simulation can't model.
     # -----------------------------------------------------------
-    HARD_RULE_GEO_THRESHOLD      = 0.95  # geo_signal >= this -> auto-flag
     HARD_RULE_AMOUNT_THRESHOLD   = 0.95  # amt_signal >= this -> auto-flag
     HARD_RULE_VELOCITY_THRESHOLD = 1.0   # v15 fully saturated (>=5 txns/15min,
                                           # the actual JP Morgan threshold) -> auto-flag
+    HARD_RULE_GEO_MIN_JUMP_KM    = 3000.0  # distance arm of the composite geo rule
+    IMPOSSIBLE_TRAVEL_SPEED_KMH  = 900.0   # speed arm — commercial-jet ceiling,
+                                            # the same figure the generator injects against
+    SPEED_RULE_MIN_DISTANCE_KM   = 100.0   # floor under the speed arm (GPS-noise guard)
 
     # Velocity normalization for risk scoring
     # velocity_15min > 5 = JP Morgan flag threshold
@@ -259,6 +286,55 @@ def haversine_distance(lat1, lon1, lat2, lon2) -> float:
     dlon = lon2 - lon1
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return R * 2 * math.asin(math.sqrt(a))
+
+
+def compute_implied_speed_kmh(distance_km, time_since_last_min) -> Optional[float]:
+    """
+    Implied travel speed between consecutive transactions, km/h.
+
+    Returns None when no meaningful speed exists: missing inputs,
+    or a NON-POSITIVE time delta. The non-positive case is load-
+    bearing, not defensive boilerplate — GEO_FLAGGING_INVESTIGATION.md
+    measured that 80% of far-distance legitimate rows had a NEGATIVE
+    delta (out-of-order backfill events being compared against a
+    location the user visits in the event-time FUTURE). A speed
+    computed from that is noise wearing units.
+
+    Kept as a module-level pure function (like haversine_distance
+    above, unlike the batch logic in process_batch) so the scoring
+    rule is unit-testable without Spark, Redis, or Kafka.
+    """
+    if distance_km is None or not time_since_last_min or time_since_last_min <= 0:
+        return None
+    return distance_km / (time_since_last_min / 60.0)
+
+
+def geo_hard_rule(distance_km, implied_speed_kmh) -> bool:
+    """
+    The composite geo hard rule from GEO_FLAGGING_INVESTIGATION.md.
+
+    Speed arm: implied speed above the commercial-jet ceiling, with
+    a distance floor so GPS jitter over second-scale deltas can't
+    fabricate supersonic "speeds" out of meter-scale movement.
+    Distance arm: intercontinental-jump scale, needed because most
+    rows have no usable time delta and the speed arm alone would
+    collapse GEO_JUMP recall (99% -> 9%, measured).
+
+    Reads thresholds from FeatureEngineConfig class attributes
+    directly — this rule is part of the config's documented
+    contract, and the tests pin those values on purpose: changing
+    a threshold should require touching the config AND its test,
+    never just one.
+    """
+    if distance_km is None:
+        return False
+    if distance_km >= FeatureEngineConfig.HARD_RULE_GEO_MIN_JUMP_KM:
+        return True
+    return (
+        implied_speed_kmh is not None
+        and implied_speed_kmh > FeatureEngineConfig.IMPOSSIBLE_TRAVEL_SPEED_KMH
+        and distance_km >= FeatureEngineConfig.SPEED_RULE_MIN_DISTANCE_KM
+    )
 
 
 # =============================================================
@@ -504,17 +580,26 @@ class RedisFeatureWriter(FeatureSink):
                 self._config.REDIS_TTL_SEC,
                 json.dumps(features, default=str)
             )
-            # Location state for next geo computation
-            pipe.setex(
-                f"user:{user_id}:location",
-                self._config.REDIS_TTL_SEC,
-                json.dumps({
-                    "lat":  features.get("latitude"),
-                    "lon":  features.get("longitude"),
-                    "city": features.get("city"),
-                    "ts":   features.get("transaction_ts"),
-                })
-            )
+            # Location state for next geo computation — SKIPPED for
+            # suspect locations (geo hard rule fired on this txn):
+            # letting an impossible-jump location become the baseline
+            # is how one fraud manufactures a chain of false flags on
+            # the user's next legitimate purchases (poisoning guard,
+            # GEO_FLAGGING_INVESTIGATION.md). Trade-off, accepted and
+            # documented there: a user who genuinely relocates at jump
+            # speed updates their baseline on their first NON-flagged
+            # transaction instead of immediately.
+            if not features.get("suspect_location"):
+                pipe.setex(
+                    f"user:{user_id}:location",
+                    self._config.REDIS_TTL_SEC,
+                    json.dumps({
+                        "lat":  features.get("latitude"),
+                        "lon":  features.get("longitude"),
+                        "city": features.get("city"),
+                        "ts":   features.get("transaction_ts"),
+                    })
+                )
             pipe.execute()
         except Exception as e:
             logger.error(f"Redis write failed for {user_id}: {e}")
@@ -573,16 +658,24 @@ class RedisFeatureWriter(FeatureSink):
                 self._config.REDIS_TTL_SEC,
                 json.dumps(features, default=str)
             )
-            pipe.setex(
-                f"user:{user_id}:location",
-                self._config.REDIS_TTL_SEC,
-                json.dumps({
-                    "lat":  features.get("latitude"),
-                    "lon":  features.get("longitude"),
-                    "city": features.get("city"),
-                    "ts":   features.get("transaction_ts"),
-                })
-            )
+            # Poisoning guard — same rule as write_features(), see
+            # the comment there. Dedup interaction, acknowledged: if
+            # the user's LATEST txn in this batch is suspect, the
+            # location update is skipped entirely for this batch even
+            # when an earlier in-batch txn was clean — the state then
+            # simply keeps its previous trusted value, which is the
+            # guard's whole point.
+            if not features.get("suspect_location"):
+                pipe.setex(
+                    f"user:{user_id}:location",
+                    self._config.REDIS_TTL_SEC,
+                    json.dumps({
+                        "lat":  features.get("latitude"),
+                        "lon":  features.get("longitude"),
+                        "city": features.get("city"),
+                        "ts":   features.get("transaction_ts"),
+                    })
+                )
         pipe.execute()
         logger.info(
             f"Redis batch write: {len(latest_per_user):,} users "
@@ -1245,6 +1338,18 @@ class FraudFeatureEngine:
                                     time_since_last_min = (curr_dt - prev_dt).total_seconds() / 60
                                 except Exception:
                                     pass
+
+                        # ---- Ordering guard (GEO_FLAGGING_INVESTIGATION.md) ----
+                        # A non-positive delta means this event arrived out of
+                        # event-time order and the "previous" location is one
+                        # the user visits in the FUTURE — the distance is
+                        # meaningless, not merely imprecise. Null the derived
+                        # features (prev_city/prev_ts stay, as provenance of
+                        # what the state contained). Measured: 80% of the
+                        # false geo flags rode on exactly this corruption.
+                        if time_since_last_min is not None and time_since_last_min <= 0:
+                            geo_distance_km = None
+                            time_since_last_min = None
                     except Exception as e:
                         logger.warning(f"Geo computation failed for {user_id}: {e}")
 
@@ -1287,9 +1392,16 @@ class FraudFeatureEngine:
                 # the weighted score structurally cannot: an individual
                 # signal that is severe enough to be suspicious with
                 # zero corroboration needed. See HARD_RULE_* comments
-                # in FeatureEngineConfig for why new_device is excluded.
+                # in FeatureEngineConfig for why new_device is excluded,
+                # and GEO_FLAGGING_INVESTIGATION.md for why geo's rule
+                # is speed-plus-jump-distance rather than the graded
+                # geo_signal it originally reused.
+                implied_speed_kmh = compute_implied_speed_kmh(
+                    geo_distance_km, time_since_last_min
+                )
+                geo_hard_triggered = geo_hard_rule(geo_distance_km, implied_speed_kmh)
                 hard_rule_triggered = (
-                    geo_signal >= config.HARD_RULE_GEO_THRESHOLD or
+                    geo_hard_triggered or
                     amt_signal >= config.HARD_RULE_AMOUNT_THRESHOLD or
                     v15        >= config.HARD_RULE_VELOCITY_THRESHOLD
                 )
@@ -1333,6 +1445,15 @@ class FraudFeatureEngine:
                     "country":                row["country"],
                     "latitude":               float(row["latitude"]) if row["latitude"] else None,
                     "longitude":              float(row["longitude"]) if row["longitude"] else None,
+                    # Poisoning guard (GEO_FLAGGING_INVESTIGATION.md):
+                    # a location that itself tripped the geo hard rule
+                    # must not become the user's new baseline —
+                    # RedisFeatureWriter skips the :location update for
+                    # suspect rows, so one fraud in London can't make
+                    # every later home purchase look like a jump back.
+                    # Measured: 99% of users with false far-distance
+                    # flags had exactly this contamination.
+                    "suspect_location":       geo_hard_triggered,
                     # risk
                     "risk_score_raw":         risk_score,
                     "is_flagged_for_review":  is_flagged,

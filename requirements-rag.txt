@@ -7,6 +7,17 @@
 # =============================================================
 weaviate-client==4.9.6
 sentence-transformers==3.3.1
+# grpc helper pins — REQUIRED for coexistence with Phase 7's
+# streamlit==1.32.0, which caps protobuf below 5. Left floating,
+# pip resolves these to 1.8x, whose generated stubs demand
+# protobuf>=6 and crash weaviate's grpc import the moment the BI
+# extras are installed (found the hard way: the whole agent stack
+# broke after `pip install -r requirements_bi.txt`). The 1.62
+# line is inside weaviate-client's >=1.57,<2 range and its
+# gencode works with protobuf 4.x. A proper cross-group lock file
+# is the real fix (hardening Priority 3).
+grpcio-health-checking==1.62.3
+grpcio-tools==1.62.3
 # sentence-transformers pulls in torch as a dependency — this is
 # a genuinely heavy install (500MB+). No way around it for local
 # embedding; this is the cost of not calling an external embedding

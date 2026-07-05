@@ -219,6 +219,8 @@ class FraudDecisioningAgent:
                     f"is_flagged_for_review: {transaction['is_flagged_for_review']}\n"
                     f"is_new_device: {transaction['is_new_device']}\n"
                     f"geo_distance_km: {transaction.get('geo_distance_km')}\n"
+                    f"time_since_last_txn_min: {transaction.get('time_since_last_txn_min')}"
+                    f" (negative or missing means out-of-order state — the geo distance above is then unreliable)\n"
                     f"amount_zscore: {transaction.get('amount_zscore')}\n"
                     f"velocity_15min: {transaction.get('velocity_15min')}\n"
                 ))
@@ -233,6 +235,7 @@ class FraudDecisioningAgent:
             "is_flagged_for_review": transaction["is_flagged_for_review"],
             "is_new_device": transaction["is_new_device"],
             "geo_distance_km": transaction.get("geo_distance_km"),
+            "time_since_last_txn_min": transaction.get("time_since_last_txn_min"),
             "amount_zscore": transaction.get("amount_zscore"),
             "velocity_15min": transaction.get("velocity_15min"),
             "decision": None,

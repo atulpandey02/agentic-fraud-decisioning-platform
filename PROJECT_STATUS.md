@@ -302,19 +302,40 @@ in Snowflake → ground-truth + LLM-judge evaluation → natural-language BI ove
 the audit log.
 
 Remaining known open items (all documented above in place):
-1. `rbac.sql` needs a manual run as ACCOUNTADMIN (AGENT_ROLE / BI_ROLE).
+1. `rbac.sql` — **DONE 2026-07-05.** Account owner ran it; `SHOW ROLES`
+   confirms PIPELINE_ROLE, AGENT_ROLE, BI_ROLE all exist. (Caveat found while
+   verifying: the roles are created and granted on the schemas, but are **not
+   yet granted to the application user**, and `BI_ROLE`/`AGENT_ROLE` lack
+   warehouse USAGE — a direct `role=BI_ROLE` connection currently fails with
+   "not granted to this user". Closing that is hardening Priority 1 item 5.)
 2. `snowflake/schema.sql` is stale vs. the live FACT_FEATURE_SNAPSHOTS
-   (missing the two ground-truth columns added Day 4).
-3. Hard-rule geo over-flagging (~44% flag rate) — now *measured* by the eval
-   loop (the one wrong BLOCK); tuning `HARD_RULE_GEO_THRESHOLD` /
-   `GEO_MAX_NORMAL_KM` is the first data-driven improvement the eval
-   pipeline can validate.
-4. Phase 3's `requirements_agents.txt` resolver conflict (langchain-groq
-   needs a 0.3.x bound to coexist with langchain-core <0.4) — the venv has a
-   working set installed; the file fix is pending from the earlier session.
-5. Empty placeholders unchanged by design: `tests/`, CI workflow,
-   `seed_data.sql`, `feature_store/` stubs. No README.md yet — this file
-   currently carries the narrative.
+   (missing the two ground-truth columns added Day 4). → hardening Priority 2.
+3. Hard-rule geo over-flagging — **INVESTIGATED + FIXED 2026-07-05**, see
+   [GEO_FLAGGING_INVESTIGATION.md](GEO_FLAGGING_INVESTIGATION.md). Root cause
+   was threefold (semantically wrong 475 km threshold + out-of-order state +
+   fraud poisoning the location baseline), not just a threshold. Fix:
+   composite speed-or-3000 km hard rule, an out-of-order ordering guard, and a
+   poisoning guard on the Redis location write. Measured on the full 1M-row
+   history (rule change alone): flag rate 44.4% → 26.6%, precision 33.3% →
+   52.6%, GEO_JUMP recall 99.2% → 98.9%. 16 unit tests
+   ([tests/test_features.py](tests/test_features.py)). Historical rows are not
+   rewritten (append-only audit); improvement is forward-looking.
+4. Pattern-ID weakness — **INVESTIGATED + PARTIALLY FIXED 2026-07-05**, see
+   [PATTERN_ID_INVESTIGATION.md](PATTERN_ID_INVESTIGATION.md). Agents never saw
+   `time_since_last_txn_min`, so a GEO_JUMP (a *speed* judgment) was
+   structurally unmakeable; that input is now threaded through both agent
+   architectures. One remaining behavioral improvement (escalate on unreliable
+   evidence) is drafted but deferred — it needs an eval run to validate and the
+   Groq daily token budget was exhausted mid-validation.
+5. `requirements_agents.txt` resolver conflict — still open (venv has a working
+   set; the file fix is pending). `requirements-rag.txt` gained pinned
+   `grpcio-health-checking`/`grpcio-tools==1.62.3` this session, because
+   installing the Phase 7 BI extras pulled newer grpc stubs that demanded
+   protobuf ≥6 and broke weaviate's import; `pip check` now passes. A proper
+   cross-group lock file is hardening Priority 3.
+6. Empty placeholders unchanged by design: CI workflow, `seed_data.sql`,
+   `feature_store/` stubs. No README.md yet — this file carries the narrative.
+   (`tests/` is no longer empty: `tests/test_features.py` now exists.)
 
 Also empty by design (placeholders, not breakage): `tests/*.py`,
 `.github/workflows/ci.yml`, `snowflake/seed_data.sql`. **There is no README.md
