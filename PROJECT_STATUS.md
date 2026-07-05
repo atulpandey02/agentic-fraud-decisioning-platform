@@ -274,6 +274,48 @@ honest scorecard, not a victory lap:
 - `bi_dashboard/config.py` — outermost config layer; `requirements_bi.txt`
   fixed (filename in the install comment, pandas left to streamlit's resolver).
 
+**Verified (2026-07-05):**
+- `requirements_bi.txt` installs cleanly (streamlit 1.32.0, plotly 5.20.0,
+  pandas 2.3.3 via streamlit).
+- Real question → real answer against the live decision log: *"How many
+  decisions per decision type, with their average confidence?"* produced
+  correct SQL and the true numbers (5 BLOCK @ 0.94 avg, 3 ESCALATE @ 0.60) —
+  matching the 8 decisions Phases 5–6 persisted. A CTE question over the eval
+  columns also generated and ran correctly (NOTIFY_ONLY tier: 75% correct,
+  which is the eval batch's 3/4).
+- **Guardrails fail closed, all four layers:** `DROP TABLE` → rejected
+  (SELECT-only); `SELECT ... FROM RAW.FACT_TRANSACTIONS` → rejected
+  (allowlist — the PII boundary held); `SELECT 1; SELECT 2` → rejected
+  (multi-statement); `UPDATE ...` → rejected. Missing LIMIT auto-appended.
+- Streamlit app boots headless, serves HTTP 200, `/_stcore/health` → ok.
+  Launch with: `cd bi_dashboard && streamlit run streamlit_app.py`.
+
+---
+
+## The platform is complete: all 7 phases built and verified
+
+End-to-end flow now running against real infrastructure:
+Kafka → Spark features (Redis online / S3+Snowpipe offline) → flagged
+transactions → multi-agent orchestration (Groq LLM specialists + Weaviate RAG
+policy grounding) → governance tier → durable decision + full reasoning trace
+in Snowflake → ground-truth + LLM-judge evaluation → natural-language BI over
+the audit log.
+
+Remaining known open items (all documented above in place):
+1. `rbac.sql` needs a manual run as ACCOUNTADMIN (AGENT_ROLE / BI_ROLE).
+2. `snowflake/schema.sql` is stale vs. the live FACT_FEATURE_SNAPSHOTS
+   (missing the two ground-truth columns added Day 4).
+3. Hard-rule geo over-flagging (~44% flag rate) — now *measured* by the eval
+   loop (the one wrong BLOCK); tuning `HARD_RULE_GEO_THRESHOLD` /
+   `GEO_MAX_NORMAL_KM` is the first data-driven improvement the eval
+   pipeline can validate.
+4. Phase 3's `requirements_agents.txt` resolver conflict (langchain-groq
+   needs a 0.3.x bound to coexist with langchain-core <0.4) — the venv has a
+   working set installed; the file fix is pending from the earlier session.
+5. Empty placeholders unchanged by design: `tests/`, CI workflow,
+   `seed_data.sql`, `feature_store/` stubs. No README.md yet — this file
+   currently carries the narrative.
+
 Also empty by design (placeholders, not breakage): `tests/*.py`,
 `.github/workflows/ci.yml`, `snowflake/seed_data.sql`. **There is no README.md
 at all** — worth writing eventually, since the docstrings currently carry all

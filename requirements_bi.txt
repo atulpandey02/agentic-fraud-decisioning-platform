@@ -1,6 +1,10 @@
 # =============================================================
 # BI DASHBOARD — Phase 7
-# Install with: pip install -r requirements-bi.txt
+# Install with: pip install -r requirements_bi.txt
+# (after requirements.txt / requirements-rag.txt / requirements_agents.txt)
 # =============================================================
+# streamlit brings pandas as its own dependency — the dashboard
+# relies on that rather than pinning pandas separately, to avoid
+# owning a pin that streamlit's resolver already owns.
 streamlit==1.32.0
 plotly==5.20.0
