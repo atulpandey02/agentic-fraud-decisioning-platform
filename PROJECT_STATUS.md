@@ -193,8 +193,86 @@ by the execution environment's permission policy — account-level role creation
 needs the owner to run it. Run `snowflake/rbac.sql` in a Snowflake worksheet as
 ACCOUNTADMIN to close it; the code already honors the intended boundaries by
 discipline (governance touches only the DECISIONS schema).
-### Phase 6 — Observability + evaluation — **NOT STARTED** (`observability/*.py` 0 bytes; eval columns exist in FACT_DECISIONS, unused; LANGSMITH_API_KEY present in .env but unused)
-### Phase 7 — Agentic BI dashboard — **NOT STARTED** (`bi_dashboard/*.py` 0 bytes; `requirements_bi.txt` exists)
+### Phase 6 — Observability + evaluation — **DONE** (built 2026-07-05)
+
+**Built:**
+- `observability/audit_logger.py` — `AgentTraceWriter`, the writer
+  FACT_AGENT_TRACES waited for since Day 1. Implements exactly the mapping
+  Phase 3's `AgentState` docstring designed: step_number = position in the
+  messages list; step_type from the message role (INPUT / TOOL_CALL /
+  TOOL_OUTPUT / REASONING / HANDOFF — HANDOFF being the orchestrator's routing
+  messages, which is what `agent_name` was designed for). Uses the
+  `INSERT ... SELECT PARSE_JSON(...) FROM VALUES` form because Snowflake
+  VARIANT columns can't take PARSE_JSON inside a bulk VALUES clause — the one
+  canonical example of the correct VARIANT-load pattern in this codebase.
+- `observability/langsmith_config.py` — env-var-based LangSmith enablement
+  with an explicit division of labor: FACT_AGENT_TRACES is the *owned*
+  compliance record ("who decided and why", queryable next to the decisions);
+  LangSmith is *vendor* dev-telemetry ("why was that prompt slow/wrong",
+  full prompts + per-call tokens). Graceful no-op without an API key.
+- `observability/eval_runner.py` — the full-stack integration point: for each
+  sampled transaction it runs Phase 4 orchestration, Phase 5 tiering +
+  persistence, writes the Phase 6 trace, then scores two *orthogonal* things:
+  1. **Outcome accuracy** (`eval_correct`): decision vs. synthetic ground
+     truth. ESCALATE deliberately scores NULL — a deferral is neither right
+     nor wrong, and scoring it either way would teach the wrong lesson
+     (always-escalate games accuracy; punishing it kills calibrated humility).
+     Escalation *rate* is reported as its own number instead.
+  2. **Reasoning quality** (`llm_judge_score/notes`): an LLM judge checks
+     groundedness/consistency/completeness of the reasoning against the
+     evidence the team actually gathered — grading free text is exactly what
+     rules can't do (the mirror image of governance's rules-not-LLM choice).
+     Judge is same-model-family (documented self-preference caveat), temp 0.
+- Sampling is **stratified** half-fraud/half-legit — an unstratified draw from
+  the flagged pool (~2:1 legit, per the hard-rule over-flagging) would mostly
+  test false-positive handling and give almost no recall signal.
+- `observability/config.py` — third layer of the importlib config chain.
+
+**Verified (first eval batch, 2026-07-05):** 6 stratified transactions (3 fraud
+/ 3 legit) ran the full stack. Results — read these as the platform's first
+honest scorecard, not a victory lap:
+- **Decision accuracy 3/4** (excluding escalations): all 3 true frauds were
+  BLOCKed; 1 legit transaction was wrongly BLOCKed as GEO_JUMP — the same
+  hard-rule geo over-flagging noted in the Phase 1 observation, now visible as
+  a measured agent error instead of a hunch. This is the eval loop doing its job.
+- **Escalation rate 2/6** — both escalations were legit transactions the agent
+  (correctly) didn't feel confident clearing; both landed in the SUGGEST queue.
+- **Pattern identification 2/6** — weakest number; the agent often picks a
+  plausible-but-wrong pattern (e.g. AMOUNT_ANOMALY when the ground truth was
+  NEW_DEVICE with a high amount — the patterns overlap by construction).
+- **Mean judge score 0.88**; mean latency ~19.5s/decision — dominated by Groq
+  free-tier rate-limit retries, not by the architecture.
+- **FACT_AGENT_TRACES: 46 rows across 6 decisions**, read back with correct
+  step ordering: INPUT → HANDOFF (orchestrator, with routing rationale) →
+  REASONING (named specialist) → ... → decision. FACT_DECISIONS eval columns
+  populated: `eval_correct` TRUE/FALSE/NULL exactly per the deferral rule,
+  judge scores + notes on every row.
+- One fix found during verification: INPUT trace rows fell back to
+  `agent_name='single_agent'` in multi-agent runs; they now label as `'user'`.
+### Phase 7 — Agentic BI dashboard (NL2SQL) — **DONE** (built 2026-07-05)
+
+**Built:**
+- `bi_dashboard/nl2sql_agent.py` — `NL2SQLAgent`: English question → one
+  Groq LLM call producing structured `{sql, explanation, chart_hint}` → code
+  guardrails → execution. The trust model is explicit: **the LLM is an
+  untrusted SQL author**. The prompt asks for good behavior (quality); the
+  post-generation validator enforces it (safety): SELECT/WITH-only, no
+  semicolon smuggling, forbidden-keyword scan, table allowlist (only
+  FACT_DECISIONS + FACT_FEATURE_SNAPSHOTS — RAW.* absent from the list IS
+  the PII boundary BI_ROLE was designed with), and a LIMIT appended when
+  missing. Violations raise a distinct `QueryRejected` so the UI can present
+  "the platform refused" differently from "the query broke".
+- `bi_dashboard/chart_renderer.py` — hint-proposes/shape-disposes rendering:
+  the LLM (which saw the intent) hints bar/line/pie/table/metric; code (which
+  saw the actual result shape) can veto down to table/metric, never erroring
+  on odd shapes. Builds DataFrames manually rather than via
+  `fetch_pandas_all()` to avoid the connector↔pyarrow version coupling
+  (pyarrow is already pinned by Phase 1's Parquet writer).
+- `bi_dashboard/streamlit_app.py` — thin UI over the two classes; the one
+  UI-policy decision made there: **generated SQL is always shown, expanded** —
+  an analyst who can't see the SQL can't catch a subtly-wrong query.
+- `bi_dashboard/config.py` — outermost config layer; `requirements_bi.txt`
+  fixed (filename in the install comment, pandas left to streamlit's resolver).
 
 Also empty by design (placeholders, not breakage): `tests/*.py`,
 `.github/workflows/ci.yml`, `snowflake/seed_data.sql`. **There is no README.md
