@@ -5,14 +5,10 @@
 # against the database, so it is tested with no database at all.
 # =============================================================
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "db"))
-
-import migrate  # noqa: E402
+from fraud_platform.db import migrate  # noqa: E402
 
 
 def _mk(tmp_path, names):

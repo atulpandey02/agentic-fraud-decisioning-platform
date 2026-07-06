@@ -18,16 +18,13 @@
 import ast
 import os
 import re
-import sys
 
 import pytest
 import sqlglot
 from sqlglot import exp
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(ROOT, "db"))
-
-import schema_contract as sc  # noqa: E402
+from fraud_platform.db import schema_contract as sc
 
 
 # --- helpers to pull named constants out of a source file, no import ---
@@ -80,9 +77,9 @@ def _insert_columns(sql: str):
 # (file, constant_name, kind, table)
 # =============================================================
 INSERT_CONSTANTS = [
-    ("stream_processing/feature_engine.py", "FACT_FEATURE_SNAPSHOTS_INSERT_SQL",
+    ("fraud_platform/stream_processing/feature_engine.py", "FACT_FEATURE_SNAPSHOTS_INSERT_SQL",
      "FEATURES.FACT_FEATURE_SNAPSHOTS"),
-    ("governance/hitl_handler.py", "FACT_DECISIONS_INSERT_SQL",
+    ("fraud_platform/governance/hitl_handler.py", "FACT_DECISIONS_INSERT_SQL",
      "DECISIONS.FACT_DECISIONS"),
 ]
 
@@ -118,7 +115,7 @@ class TestFeatureInsertReconciled:
     """The specific drift that motivated Priority 2."""
     def test_ground_truth_columns_present(self):
         sql = _module_constants(
-            "stream_processing/feature_engine.py"
+            "fraud_platform/stream_processing/feature_engine.py"
         )["FACT_FEATURE_SNAPSHOTS_INSERT_SQL"]
         _, cols = _insert_columns(sql)
         assert "IS_SYNTHETIC_FRAUD" in cols
@@ -128,7 +125,7 @@ class TestFeatureInsertReconciled:
 class TestUpdateContracts:
     def test_review_update_columns_exist(self):
         sql = _module_constants(
-            "governance/hitl_handler.py"
+            "fraud_platform/governance/hitl_handler.py"
         )["FACT_DECISIONS_REVIEW_UPDATE_SQL"]
         stmt = _parse(sql)
         assert isinstance(stmt, exp.Update)
@@ -141,7 +138,7 @@ class TestUpdateContracts:
     def test_review_update_is_conditional_on_unreviewed(self):
         # the atomicity guarantee must be IN the SQL, not just the docstring
         sql = _module_constants(
-            "governance/hitl_handler.py"
+            "fraud_platform/governance/hitl_handler.py"
         )["FACT_DECISIONS_REVIEW_UPDATE_SQL"]
         assert "human_reviewed = FALSE" in sql, "review UPDATE must guard on human_reviewed=FALSE"
 
@@ -149,7 +146,7 @@ class TestUpdateContracts:
 class TestSelectContracts:
     def test_pending_reviews_columns_exist(self):
         sql = _module_constants(
-            "governance/hitl_handler.py"
+            "fraud_platform/governance/hitl_handler.py"
         )["PENDING_REVIEWS_SELECT_SQL"]
         stmt = _parse(sql)
         table = _table_of(stmt)
@@ -162,7 +159,7 @@ class TestSelectContracts:
 class TestTraceColumnList:
     def test_trace_columns_exist_and_ordered(self):
         cols = _module_constants(
-            "observability/audit_logger.py"
+            "fraud_platform/observability/audit_logger.py"
         )["FACT_AGENT_TRACES_COLUMNS"]
         table = "DECISIONS.FACT_AGENT_TRACES"
         upper = [c.upper() for c in cols]

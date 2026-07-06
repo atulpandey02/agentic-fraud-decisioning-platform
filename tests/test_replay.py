@@ -5,16 +5,12 @@
 # it and assert its structure, with no database.
 # =============================================================
 
-import os
-import sys
 
 import sqlglot
 from sqlglot import exp
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "db"))
-
-import replay  # noqa: E402
-import schema_contract as sc  # noqa: E402
+from fraud_platform.db import replay
+from fraud_platform.db import schema_contract as sc
 
 
 class TestMergeShape:

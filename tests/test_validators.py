@@ -5,14 +5,10 @@
 # in Snowflake CHECK constraints (or nowhere, for NaN/inf).
 # =============================================================
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "db"))
-
-from validators import (  # noqa: E402
+from fraud_platform.db.validators import (  # noqa: E402
     ValidationError,
     validate_probability,
     validate_risk_score,

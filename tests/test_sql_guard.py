@@ -12,14 +12,10 @@
 # holds even when the "author" is hostile.
 # =============================================================
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "bi_dashboard"))
-
-from sql_guard import SQLValidator, QueryRejected  # noqa: E402
+from fraud_platform.bi_dashboard.sql_guard import SQLValidator, QueryRejected  # noqa: E402
 
 
 ALLOWED = ["DECISIONS.FACT_DECISIONS", "FEATURES.FACT_FEATURE_SNAPSHOTS"]

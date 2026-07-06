@@ -8,15 +8,10 @@
 # connects at import time) and touch no Redis/Kafka/Snowflake.
 # =============================================================
 
-import os
-import sys
-import math
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "stream_processing"))
-
-from feature_engine import (  # noqa: E402
+from fraud_platform.stream_processing.feature_engine import (  # noqa: E402
     FeatureEngineConfig,
     haversine_distance,
     compute_implied_speed_kmh,

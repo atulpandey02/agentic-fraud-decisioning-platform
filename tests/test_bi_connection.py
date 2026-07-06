@@ -9,14 +9,10 @@
 # assertion is demonstrated separately against Snowflake.
 # =============================================================
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "bi_dashboard"))
-
-from db import assert_role_allowed, InsecureConnectionError  # noqa: E402
+from fraud_platform.bi_dashboard.connection import assert_role_allowed, InsecureConnectionError  # noqa: E402
 
 
 class TestRoleRefusal:

@@ -112,8 +112,8 @@ services:
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8080
     volumes:
-      - ./stream_processing:/opt/spark-apps/stream_processing
-      - ./feature_store:/opt/spark-apps/feature_store
+      - ./fraud_platform/stream_processing:/opt/spark-apps/stream_processing
+      - ./fraud_platform/feature_store:/opt/spark-apps/feature_store
       - spark_data:/tmp/spark-data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080"]
@@ -142,8 +142,8 @@ services:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_WEBUI_PORT=8081
     volumes:
-      - ./stream_processing:/opt/spark-apps/stream_processing
-      - ./feature_store:/opt/spark-apps/feature_store
+      - ./fraud_platform/stream_processing:/opt/spark-apps/stream_processing
+      - ./fraud_platform/feature_store:/opt/spark-apps/feature_store
       - spark_data:/tmp/spark-data
     depends_on:
       spark-master:
