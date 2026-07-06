@@ -8,3 +8,9 @@
 # owning a pin that streamlit's resolver already owns.
 streamlit==1.32.0
 plotly==5.20.0
+# sqlglot — the AST parser behind the NL2SQL security guardrail
+# (bi_dashboard/sql_guard.py). Pure-Python, no transitive deps, so
+# it adds nothing to the resolver's job. This is a SECURITY
+# dependency, not a nice-to-have: without it the BI surface falls
+# back to nothing, so it is pinned exactly like the rest.
+sqlglot==25.34.0

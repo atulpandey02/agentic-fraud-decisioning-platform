@@ -34,12 +34,13 @@ globals().update({k: v for k, v in vars(_phase6).items() if k.isupper()})
 #   1. Table allowlist — only the two tables BI_ROLE was designed
 #      to read (rbac.sql, Day 1). RAW (the PII schema) is not in
 #      the list, so no generated query can name it and pass.
-#   2. SELECT/WITH-only — statement must start with SELECT or
-#      WITH; semicolons stripped so a second statement can't ride
-#      along.
-#   3. Row cap — LIMIT appended when the model forgets, so a
-#      "show me everything" question can't pull a million rows
-#      into a Streamlit table.
+#   2. SELECT/CTE/set-op only — enforced by parsing to an AST and
+#      permitting only read-shaped top-level nodes, not by matching
+#      keywords (see sql_guard.py for why the regex approach was
+#      replaced).
+#   3. Row cap — the configured LIMIT is enforced even when the
+#      model supplies a larger one, so a "show me everything"
+#      question can't pull a million rows into a Streamlit table.
 # -------------------------------------------------------------
 BI_ALLOWED_TABLES = [
     "DECISIONS.FACT_DECISIONS",
@@ -47,6 +48,27 @@ BI_ALLOWED_TABLES = [
 ]
 BI_MAX_ROWS = 200
 BI_QUERY_TIMEOUT_SECONDS = 30
+
+# -------------------------------------------------------------
+# BI SNOWFLAKE ROLE — least privilege, enforced at startup
+#
+# The BI application connects as BI_ROLE, never the shared
+# ACCOUNTADMIN default the rest of the codebase still carries.
+# BI_ROLE's rbac.sql grants are SELECT on DECISIONS + FEATURES
+# only — no RAW, no DIM, no writes. Two things make this real,
+# both enforced in db.open_bi_connection():
+#   1. The resolved role is refused if it is any admin role — a
+#      misconfigured BI_SNOWFLAKE_ROLE=ACCOUNTADMIN must fail
+#      loudly, not silently hand the BI surface superuser rights.
+#   2. Secondary roles are disabled at session start. VERIFIED
+#      the hard way during Priority 1: connecting as BI_ROLE with
+#      the default secondary-roles=ALL still exposed RAW, because
+#      the operator's own ACCOUNTADMIN remained active as a
+#      secondary role. Primary-role selection alone is NOT a
+#      security boundary on this account.
+# -------------------------------------------------------------
+BI_SNOWFLAKE_ROLE = os.getenv("BI_SNOWFLAKE_ROLE", "BI_ROLE")
+BI_FORBIDDEN_ROLES = {"ACCOUNTADMIN", "ORGADMIN", "SECURITYADMIN", "SYSADMIN"}
 
 # The dashboard reuses the agents' Groq model — NL2SQL is a
 # text-to-text task the 70B model handles well; introducing a

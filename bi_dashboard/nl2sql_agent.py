@@ -16,18 +16,29 @@
 # bearing. The allowlist notably excludes RAW.* — the BI surface
 # must not be a side door into the PII schema BI_ROLE was
 # explicitly designed never to see (rbac.sql, Day 1).
+#
+# Two layers of that guardrail, hardened in Priority 1:
+#   - STRUCTURE: SQLValidator (sql_guard.py) parses the generated
+#     SQL to an AST and allowlists query shape + table references,
+#     replacing the original regex keyword scan that a table
+#     function or dynamic identifier could walk straight past.
+#   - AUTHORITY: db.open_bi_connection() confines the session to
+#     BI_ROLE with secondary roles disabled, so even a query the
+#     validator somehow passed cannot read what BI_ROLE can't.
+#   Defense in depth: the validator not being perfect is fine
+#   precisely because the database grants are the backstop.
 # =============================================================
 
-import re
 import logging
 from typing import List, Optional, Tuple
 
-import snowflake.connector
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
 import config
+from sql_guard import SQLValidator, QueryRejected
+from db import open_bi_connection
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +100,10 @@ class GeneratedQuery(BaseModel):
     )
 
 
-class QueryRejected(Exception):
-    """Raised when generated SQL fails guardrail validation —
-    a distinct type so the UI can show 'the agent tried something
-    disallowed' differently from a Snowflake execution error."""
+# QueryRejected now lives in sql_guard (the guard's home) and is
+# re-exported here so existing importers — the Streamlit app in
+# particular — keep working unchanged.
+__all__ = ["NL2SQLAgent", "QueryRejected", "GeneratedQuery"]
 
 
 class NL2SQLAgent:
@@ -107,18 +118,23 @@ class NL2SQLAgent:
             temperature=config.BI_LLM_TEMPERATURE,
             api_key=config.GROQ_API_KEY,
         ).with_structured_output(GeneratedQuery)
+        # The structural guardrail — injected the allowlist and row
+        # cap from config, so this agent doesn't reach into config
+        # for policy and the validator stays independently testable.
+        self._validator = SQLValidator(
+            allowed_tables=config.BI_ALLOWED_TABLES,
+            max_rows=config.BI_MAX_ROWS,
+        )
         self._conn = None
 
     def _get_connection(self):
+        # The authority guardrail. open_bi_connection() confines the
+        # session to BI_ROLE with secondary roles off, and fails
+        # loudly rather than silently running over-privileged — see
+        # db.py. Deliberately NOT config.SNOWFLAKE_ROLE (ACCOUNTADMIN
+        # default): no admin credential belongs in the BI path.
         if self._conn is None or self._conn.is_closed():
-            self._conn = snowflake.connector.connect(
-                account=config.SNOWFLAKE_ACCOUNT,
-                user=config.SNOWFLAKE_USER,
-                password=config.SNOWFLAKE_PASSWORD,
-                database=config.SNOWFLAKE_DATABASE,
-                warehouse=config.SNOWFLAKE_WAREHOUSE,
-                role=config.SNOWFLAKE_ROLE,
-            )
+            self._conn = open_bi_connection()
         return self._conn
 
     def close(self) -> None:
@@ -131,54 +147,14 @@ class NL2SQLAgent:
     # ----------------------------------------------------------
     def validate_sql(self, sql: str) -> str:
         """
-        Vet and normalize generated SQL. Raises QueryRejected with a
-        human-readable reason on any violation. Returns the (possibly
-        LIMIT-amended) statement to execute.
-
-        Deliberately a blunt instrument: string/regex checks, not a
-        SQL parser. A real deployment behind a real BI_ROLE would add
-        the database's own grants as the final layer (defense in
-        depth's whole point is that THIS layer doesn't have to be
-        perfect) — but bluntness keeps the rules readable, and
-        readable security rules are the ones that survive review.
+        Vet and normalize generated SQL, returning a safe, canonical,
+        row-capped statement or raising QueryRejected. Delegates to
+        SQLValidator (sql_guard.py) — AST parsing and structural
+        allowlisting, which the original regex version could not do.
+        Kept as a method (not inlined into ask) so the validation
+        step stays an explicit, nameable part of the pipeline.
         """
-        cleaned = sql.strip().rstrip(";").strip()
-        if not cleaned:
-            raise QueryRejected("The agent produced no SQL for this question.")
-        if ";" in cleaned:
-            raise QueryRejected("Multiple SQL statements are not allowed.")
-
-        head = cleaned.split(None, 1)[0].upper()
-        if head not in ("SELECT", "WITH"):
-            raise QueryRejected(f"Only SELECT queries are allowed (got '{head}').")
-
-        forbidden = re.search(
-            r"\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|CALL|COPY)\b",
-            cleaned, re.IGNORECASE,
-        )
-        if forbidden:
-            raise QueryRejected(f"Forbidden keyword: {forbidden.group(1).upper()}.")
-
-        # Every schema-qualified table referenced must be allowlisted.
-        # RAW.* is conspicuously absent from the allowlist — that IS
-        # the PII boundary, enforced here in code.
-        referenced = set(re.findall(r"\b([A-Za-z_]+\.[A-Za-z_]+)\b", cleaned))
-        tables = {t.upper() for t in referenced if not t.upper().startswith("DATE_")}
-        disallowed = {
-            t for t in tables
-            if "." in t and t not in [a.upper() for a in config.BI_ALLOWED_TABLES]
-            # Only reject schema.table shapes that look like table refs,
-            # not function calls or column paths — the second regex
-            # element already excludes obvious DATE_ functions; anything
-            # else unknown fails closed.
-        }
-        if disallowed:
-            raise QueryRejected(f"Query references non-allowlisted tables: {sorted(disallowed)}.")
-
-        if not re.search(r"\bLIMIT\s+\d+\b", cleaned, re.IGNORECASE):
-            cleaned = f"{cleaned}\nLIMIT {config.BI_MAX_ROWS}"
-
-        return cleaned
+        return self._validator.validate(sql)
 
     # ----------------------------------------------------------
     # PUBLIC API
