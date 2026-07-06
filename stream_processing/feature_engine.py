@@ -784,6 +784,46 @@ class S3FeatureWriter(FeatureSink):
         return key
 
 
+# -------------------------------------------------------------
+# FACT_FEATURE_SNAPSHOTS insert — one authoritative statement,
+# extracted to a module constant so tests/test_schema_contract.py
+# can parse it and assert it matches the schema contract without
+# executing anything. RECONCILED in Priority 2: is_synthetic_fraud
+# and fraud_pattern are now included. The sf_rows dict has carried
+# both since Day 4, but this fallback INSERT silently dropped them
+# (it only ever ran as the manual fallback, so the loss went
+# unnoticed) — a real reader/writer-contract drift, now closed.
+# The primary S3->Snowpipe path was already writing all 23 columns.
+# -------------------------------------------------------------
+FACT_FEATURE_SNAPSHOTS_INSERT_SQL = """
+    INSERT INTO FEATURES.FACT_FEATURE_SNAPSHOTS (
+        snapshot_id, transaction_id, user_id,
+        user_surrogate_key, computed_at,
+        velocity_5min, velocity_15min,
+        velocity_1hr, velocity_24hr,
+        txn_amount, user_avg_amount, user_stddev_amount,
+        amount_zscore,
+        prev_transaction_city, prev_transaction_ts,
+        geo_distance_km, time_since_last_txn_min,
+        is_new_device, device_id,
+        risk_score_raw, is_flagged_for_review,
+        is_synthetic_fraud, fraud_pattern
+    ) VALUES (
+        %(snapshot_id)s, %(transaction_id)s, %(user_id)s,
+        %(user_surrogate_key)s, %(computed_at)s,
+        %(velocity_5min)s, %(velocity_15min)s,
+        %(velocity_1hr)s, %(velocity_24hr)s,
+        %(txn_amount)s, %(user_avg_amount)s, %(user_stddev_amount)s,
+        %(amount_zscore)s,
+        %(prev_transaction_city)s, %(prev_transaction_ts)s,
+        %(geo_distance_km)s, %(time_since_last_txn_min)s,
+        %(is_new_device)s, %(device_id)s,
+        %(risk_score_raw)s, %(is_flagged_for_review)s,
+        %(is_synthetic_fraud)s, %(fraud_pattern)s
+    )
+"""
+
+
 class SnowflakeFeatureWriter(FeatureSink):
     """
     Writes feature snapshots to FEATURES.FACT_FEATURE_SNAPSHOTS.
@@ -866,31 +906,7 @@ class SnowflakeFeatureWriter(FeatureSink):
         if not features_list:
             return
 
-        sql = """
-            INSERT INTO FEATURES.FACT_FEATURE_SNAPSHOTS (
-                snapshot_id, transaction_id, user_id,
-                user_surrogate_key, computed_at,
-                velocity_5min, velocity_15min,
-                velocity_1hr, velocity_24hr,
-                txn_amount, user_avg_amount, user_stddev_amount,
-                amount_zscore,
-                prev_transaction_city, prev_transaction_ts,
-                geo_distance_km, time_since_last_txn_min,
-                is_new_device, device_id,
-                risk_score_raw, is_flagged_for_review
-            ) VALUES (
-                %(snapshot_id)s, %(transaction_id)s, %(user_id)s,
-                %(user_surrogate_key)s, %(computed_at)s,
-                %(velocity_5min)s, %(velocity_15min)s,
-                %(velocity_1hr)s, %(velocity_24hr)s,
-                %(txn_amount)s, %(user_avg_amount)s, %(user_stddev_amount)s,
-                %(amount_zscore)s,
-                %(prev_transaction_city)s, %(prev_transaction_ts)s,
-                %(geo_distance_km)s, %(time_since_last_txn_min)s,
-                %(is_new_device)s, %(device_id)s,
-                %(risk_score_raw)s, %(is_flagged_for_review)s
-            )
-        """
+        sql = FACT_FEATURE_SNAPSHOTS_INSERT_SQL
         conn = self._get_connection()
         try:
             cursor = conn.cursor()

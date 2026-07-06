@@ -31,6 +31,19 @@ import config
 logger = logging.getLogger(__name__)
 
 
+# The FACT_AGENT_TRACES column order, in ONE place. Both the INSERT's
+# column list and the per-row params are built from this list, so they
+# cannot drift out of alignment, and tests/test_schema_contract.py can
+# validate it against db/schema_contract.py. tool_input/tool_output are
+# VARIANT columns loaded via PARSE_JSON (see write_trace) — their
+# positions here (indices 6, 7) drive which projected columns get wrapped.
+FACT_AGENT_TRACES_COLUMNS = [
+    "trace_id", "decision_id", "step_number", "agent_name", "step_type",
+    "tool_name", "tool_input", "tool_output", "reasoning_text", "tokens_used",
+]
+_VARIANT_TRACE_COLUMNS = {"tool_input", "tool_output"}
+
+
 class AgentTraceWriter:
     """
     Maps a finished run's messages list -> FACT_AGENT_TRACES rows.
@@ -167,25 +180,24 @@ class AgentTraceWriter:
         if not rows:
             return 0
 
-        placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
+        cols = FACT_AGENT_TRACES_COLUMNS
+        col_list = ", ".join(cols)
+        # Positional VALUES columns are 1-based; wrap the two VARIANT
+        # columns in PARSE_JSON, pass the rest through unchanged.
+        projection = ", ".join(
+            f"PARSE_JSON(column{i + 1})" if c in _VARIANT_TRACE_COLUMNS else f"column{i + 1}"
+            for i, c in enumerate(cols)
+        )
+        row_placeholder = "(" + ", ".join(["%s"] * len(cols)) + ")"
+        placeholders = ", ".join([row_placeholder] * len(rows))
         sql = f"""
-            INSERT INTO DECISIONS.FACT_AGENT_TRACES (
-                trace_id, decision_id, step_number, agent_name, step_type,
-                tool_name, tool_input, tool_output, reasoning_text, tokens_used
-            )
-            SELECT column1, column2, column3, column4, column5,
-                   column6, PARSE_JSON(column7), PARSE_JSON(column8),
-                   column9, column10
+            INSERT INTO DECISIONS.FACT_AGENT_TRACES ({col_list})
+            SELECT {projection}
             FROM VALUES {placeholders}
         """
         params = []
         for r in rows:
-            params.extend([
-                r["trace_id"], r["decision_id"], r["step_number"],
-                r["agent_name"], r["step_type"], r["tool_name"],
-                r["tool_input"], r["tool_output"], r["reasoning_text"],
-                r["tokens_used"],
-            ])
+            params.extend(r[c] for c in cols)
 
         conn = self._get_connection()
         cursor = conn.cursor()

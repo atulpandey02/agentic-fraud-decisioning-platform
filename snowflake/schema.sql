@@ -9,6 +9,15 @@
 --   - DECISIONS: agents write, BI agent reads
 --   - DIM: pipeline writes, agents read (baseline context)
 -- =============================================================
+-- This file is the FRESH-DATABASE BASELINE — run it once to create
+-- an empty schema. INCREMENTAL changes after that live in
+-- snowflake/migrations/VNNN__*.sql and are applied idempotently by
+-- `python db/migrate.py`. The two are kept in agreement by
+-- tests/test_schema_contract.py (which checks this DDL against
+-- db/schema_contract.py, the single source of truth for column
+-- shape). Reconciled in Priority 2: FACT_FEATURE_SNAPSHOTS now
+-- declares is_synthetic_fraud / fraud_pattern (previously drifted).
+-- =============================================================
 
 -- -------------------------------------------------------------
 -- DATABASE
@@ -154,6 +163,14 @@ CREATE TABLE IF NOT EXISTS FACT_FEATURE_SNAPSHOTS (
     -- Composite risk signal (heuristic, pre-agent)
     risk_score_raw          FLOAT,          -- 0.0 to 1.0
     is_flagged_for_review   BOOLEAN         DEFAULT FALSE,
+
+    -- Ground-truth labels carried through from the transaction so
+    -- FACT_FEATURE_SNAPSHOTS is self-contained for eval (Day 4). These
+    -- were added to the LIVE table by a hand-run ALTER but never landed
+    -- in this DDL — the drift Priority 2 reconciles. migrations/V002
+    -- carries the same ALTER idempotently for already-deployed tables.
+    is_synthetic_fraud      BOOLEAN,        -- NULL until the generator labels it
+    fraud_pattern           VARCHAR(50),    -- one of the four patterns, or NULL if legitimate
 
     PRIMARY KEY (snapshot_id)
 );
