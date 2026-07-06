@@ -84,3 +84,37 @@ BI surface at all.
 - Agents decide on derived signals, not names.
 - Secrets are not committed (`.env` is git-ignored; grep the history before any
   public release).
+
+## 7. Known debt / tracked risks (explicit, not implicit)
+
+These are logged so they are decisions on the record, not surprises.
+
+1. **Application validators are NOT yet enforced on live pipeline data
+   (BLOCKS Priority 5 completion).** `db/validators.py` is unit-tested and is
+   wired into the *decision* write boundary (`persist_decision`), but it is
+   **not wired into `feature_engine.py`'s Spark processing loop**. That means
+   live production feature rows — amounts, risk scores, z-scores — are still
+   written without these checks today. **Priority 5 is not complete until**
+   the validators are enforced inside the pipeline AND that enforcement is
+   proven with real bad-data cases (NaN amount, out-of-range confidence,
+   invalid enum combination) actually being *rejected in the live pipeline*,
+   not merely in unit tests. This must be done with per-transaction failure
+   isolation so one bad row cannot fail an entire micro-batch.
+
+2. **Schema shape is hand-maintained in multiple places, reconciled by a test
+   rather than generated from one source.** `snowflake/schema.sql` (the
+   fresh-database baseline DDL), the `snowflake/migrations/VNNN__*.sql` DDLs,
+   and `db/schema_contract.py` (the contract) each independently express column
+   shape. `tests/test_schema_contract.py` catches drift *after the fact*; no
+   single artifact generates the others. Architectural debt: a future
+   improvement generates the DDL and the contract from one source (or the
+   contract from the live `INFORMATION_SCHEMA`). If Priority 3's packaging work
+   creates a clean opportunity to collapse these, take it; otherwise leave it.
+
+3. **Three schema-contract tests compare by name, not fully-qualified
+   identity** (see the Priority 2 review): `test_ddl_columns_match_contract`
+   (substring), `test_pending_reviews_columns_exist` (single-table-only column
+   attribution), `test_review_update_is_conditional_on_unreviewed` (substring).
+   None is unsound *today*, but each would carry the same coincidental-name
+   false-pass risk that the RAW collision exposed if the underlying statement
+   changed shape (e.g. gained a JOIN). Cheap to harden; not yet done.
