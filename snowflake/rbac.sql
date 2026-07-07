@@ -59,7 +59,12 @@ GRANT USAGE ON SCHEMA FRAUD_DETECTION.FEATURES TO ROLE BI_ROLE;
 GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.DECISIONS TO ROLE BI_ROLE;
 GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.FEATURES TO ROLE BI_ROLE;
 
-GRANT ROLE BI_ROLE  TO USER ATULPANDEY02;
-GRANT ROLE AGENT_ROLE TO USER ATULPANDEY02;
+-- Warehouse USAGE for the least-privilege roles (account-agnostic).
 GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE BI_ROLE;
 GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE AGENT_ROLE;
+
+-- NOTE: granting these roles to a specific USER is account-specific and
+-- deliberately NOT in this shared baseline (it used to hardcode one
+-- personal username, which only worked for that one account). See
+-- snowflake/rbac_local_example.sql — copy it, fill in your username, and
+-- run it locally.

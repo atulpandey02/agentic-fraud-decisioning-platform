@@ -15,3 +15,6 @@ metastore_db/
 *.pem
 *.key
 secrets/
+
+# account-specific RBAC grants (copy of rbac_local_example.sql)
+snowflake/rbac_local.sql
