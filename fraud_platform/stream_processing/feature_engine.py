@@ -815,6 +815,11 @@ class SnowflakeFeatureWriter(FeatureSink):
                 role=self._config.SNOWFLAKE_ROLE,
                 schema="FEATURES",
             )
+            # Confine the session to the PRIMARY role. Without this, the
+            # operator's other granted roles (incl. ACCOUNTADMIN) stay
+            # active as secondary roles and "running as PIPELINE_ROLE" is
+            # fiction — the same finding as the BI path in Priority 1.
+            self._conn.cursor().execute("USE SECONDARY ROLES NONE")
         return self._conn
 
     def test_connection(self) -> None:
@@ -988,6 +993,9 @@ class FraudFeatureEngine:
             role=self._config.SNOWFLAKE_ROLE,
             schema="DIM",
         )
+        # Confine to the primary role (see _get_connection) — this read
+        # must succeed on PIPELINE_ROLE's own DIM grant, not a secondary.
+        conn.cursor().execute("USE SECONDARY ROLES NONE")
         try:
             cursor = conn.cursor()
             cursor.execute("""

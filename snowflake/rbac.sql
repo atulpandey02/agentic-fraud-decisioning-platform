@@ -29,6 +29,11 @@ GRANT INSERT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.RAW TO ROLE PIPELINE_ROLE;
 GRANT INSERT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.FEATURES TO ROLE PIPELINE_ROLE;
 -- Read access on DIM so Spark can join baseline during feature computation
 GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.DIM TO ROLE PIPELINE_ROLE;
+-- Read access on FEATURES: the engine's startup probe (test_connection)
+-- runs SELECT COUNT(*) FROM FACT_FEATURE_SNAPSHOTS, so the pipeline could
+-- never actually start under its own least-privilege role without this.
+-- (Migrations/V004 carries the same grant idempotently for existing DBs.)
+GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.FEATURES TO ROLE PIPELINE_ROLE;
 
 -- -------------------------------------------------------------
 -- AGENT_ROLE
