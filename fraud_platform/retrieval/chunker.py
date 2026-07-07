@@ -148,8 +148,17 @@ class DocumentChunker:
         One section becomes one chunk if it fits under
         CHUNK_MAX_WORDS. If not, split at paragraph boundaries
         (blank-line-separated) and group paragraphs into
-        sub-chunks that each stay under budget — never splitting
-        mid-paragraph, since that would cut a single thought in half.
+        sub-chunks that each stay under budget.
+
+        Paragraph boundaries are PREFERRED (splitting there keeps a
+        thought intact), but they are not always sufficient: a single
+        paragraph can itself exceed the budget. When it does, the
+        HARD LIMIT wins over the tidiness preference — that paragraph
+        is split at word boundaries into budget-sized pieces. This is
+        deliberate: the embedding model silently truncates anything
+        past its token ceiling, so an over-budget chunk loses its tail
+        with no warning. A mid-paragraph split is strictly better than
+        a silent truncation (Priority 4 item 3).
         """
         prefix = CHUNK_CONTEXT_PREFIX_TEMPLATE.format(pattern=pattern)
         full_text = f"{prefix}## {section_name}\n{section_body}"
@@ -187,7 +196,10 @@ class DocumentChunker:
         overhead_words = len(f"{prefix}## {section_name}\n".split())
         effective_budget = CHUNK_MAX_WORDS - overhead_words
 
-        paragraphs = [p.strip() for p in section_body.split("\n\n") if p.strip()]
+        paragraphs = self._split_oversized_paragraphs(
+            [p.strip() for p in section_body.split("\n\n") if p.strip()],
+            effective_budget,
+        )
         sub_chunks: List[Chunk] = []
         current_group: List[str] = []
         current_words = 0
@@ -213,6 +225,27 @@ class DocumentChunker:
             )
 
         return sub_chunks
+
+    @staticmethod
+    def _split_oversized_paragraphs(paragraphs: List[str], budget: int) -> List[str]:
+        """
+        Pre-pass before grouping: any single paragraph longer than
+        `budget` words is broken into word-boundary pieces of at most
+        `budget` words each. Paragraphs that already fit pass through
+        untouched, so the paragraph-boundary preference still holds for
+        everything that doesn't force the issue. This is what
+        guarantees no downstream sub-chunk can exceed the budget on a
+        single paragraph alone (Priority 4 item 3).
+        """
+        out: List[str] = []
+        for para in paragraphs:
+            words = para.split()
+            if len(words) <= budget:
+                out.append(para)
+                continue
+            for i in range(0, len(words), budget):
+                out.append(" ".join(words[i:i + budget]))
+        return out
 
     def _finalize_subchunk(
         self,

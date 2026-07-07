@@ -337,6 +337,27 @@ def geo_hard_rule(distance_km, implied_speed_kmh) -> bool:
     )
 
 
+def compute_risk_score(v15, amt_signal, geo_signal, dev_signal, weights) -> float:
+    """
+    The weighted composite risk score — the "soft" half of the two-tier
+    scoring (the hard rules are geo_hard_rule + the amount/velocity
+    saturation checks). Each input is an already-normalized 0..1 signal;
+    the weighted sum is clamped to 1.0 and rounded.
+
+    Extracted to a module-level pure function (like haversine_distance
+    and geo_hard_rule) so the scoring formula is unit-testable without
+    Spark/Redis/Kafka — the weights come in as an argument so a test can
+    pin them and the class config stays the single production source.
+    """
+    score = (
+        weights["velocity_15min"] * v15 +
+        weights["amount_zscore"] * amt_signal +
+        weights["geo_distance"] * geo_signal +
+        weights["new_device"] * dev_signal
+    )
+    return round(min(score, 1.0), 4)
+
+
 # =============================================================
 # FEATURE SINK — abstract base class
 # =============================================================
@@ -1395,13 +1416,9 @@ class FraudFeatureEngine:
                 geo_signal = min((geo_distance_km or 0) / config.GEO_MAX_NORMAL_KM, 1.0)
                 dev_signal = 1.0 if is_new_device else 0.0
 
-                risk_score = (
-                    config.RISK_WEIGHTS["velocity_15min"] * v15 +
-                    config.RISK_WEIGHTS["amount_zscore"]  * amt_signal +
-                    config.RISK_WEIGHTS["geo_distance"]   * geo_signal +
-                    config.RISK_WEIGHTS["new_device"]     * dev_signal
+                risk_score = compute_risk_score(
+                    v15, amt_signal, geo_signal, dev_signal, config.RISK_WEIGHTS
                 )
-                risk_score = round(min(risk_score, 1.0), 4)
 
                 # ---- Flag decision: weighted score OR hard-rule override ----
                 # A same-weighted additive score can never flag a pure

@@ -131,7 +131,9 @@ class Settings(BaseModel):
 
         def _int(name: str, default: int) -> int:
             raw = os.getenv(name)
-            return int(raw) if raw not in (None, "") else default
+            if raw is None or raw == "":
+                return default
+            return int(raw)
 
         return cls(
             snowflake=SnowflakeSettings(

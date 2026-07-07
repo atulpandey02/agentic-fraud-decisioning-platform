@@ -61,6 +61,8 @@ bi = [
 dev = [
     "pytest==8.3.4",
     "ruff==0.8.4",
+    "mypy==1.13.0",
+    "bandit==1.8.0",
 ]
 
 [project.scripts]
@@ -83,3 +85,26 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["F"]
+
+[tool.mypy]
+# Type-checking is scoped (in CI) to the cleanly-typed modules. This
+# config makes that scope pass without demanding stubs for the heavy
+# untyped third-party deps (pyspark, langchain, snowflake, ...).
+python_version = "3.10"
+ignore_missing_imports = true
+warn_unused_ignores = false
+
+[tool.bandit]
+# Skips, each justified:
+#   B608 — hardcoded-SQL string building. The BI path's SQL is
+#     AST-validated (sql_guard) before execution, and the writers build
+#     SQL from the schema contract / parameterized placeholders, never
+#     from user input.
+#   B101 — assert-based validation is used deliberately in tests/helpers.
+#   B108 — hardcoded /tmp path. These are Spark Structured Streaming
+#     CHECKPOINT directories; a local /tmp checkpoint is the standard
+#     dev pattern and the code's own docstring flags that production
+#     relocates them to durable storage (HDFS/S3). Not a secret or a
+#     user-influenced path.
+skips = ["B608", "B101", "B108"]
+exclude_dirs = ["tests"]

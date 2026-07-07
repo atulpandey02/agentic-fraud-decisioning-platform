@@ -56,16 +56,17 @@ fraud-migrate                 # apply pending VNNN__*.sql, idempotently
 # equivalently: python -m fraud_platform.db.migrate
 ```
 
-### Test
+### Test, lint, type-check, security — exactly what CI runs
 ```bash
-pytest -q                     # 125 unit/contract tests, no credentials needed
+pytest -q                                              # 196 unit + mocked-adapter tests, no credentials
+ruff check .                                           # lint: real-bug rules (F)
+mypy fraud_platform/settings.py fraud_platform/db      # type-check (scoped to typed modules)
+bandit -c pyproject.toml -r fraud_platform -ll         # security scan (medium+ severity)
+pip check                                              # dependency graph consistent
 ```
-
-### Lint
-```bash
-ruff check .                  # real-bug rules (F): unused imports, undefined names
-ruff check . --fix            # auto-fix what it can
-```
+CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR,
+installing from `constraints.txt`. None of it needs Snowflake/Groq/Redis/Weaviate
+— the demos are the only things that touch live services.
 
 ### Demos (require live infra + credentials; exercise real services)
 ```bash

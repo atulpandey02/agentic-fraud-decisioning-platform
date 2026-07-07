@@ -1,0 +1,56 @@
+# =============================================================
+# CI — install from the lock, lint, type-check, security-scan,
+# pip check, and run the credential-free test suite.
+# =============================================================
+# Runs on every push and PR. Nothing here needs Snowflake / Groq /
+# Redis / Weaviate: the whole `pytest` suite is unit + mocked-adapter
+# tests. The live-infra demos (run_demo, eval_runner) are deliberately
+# NOT run in CI — they require real services and are exercised
+# manually. Reproducibility comes from constraints.txt (the locked
+# resolution) + `pip check`.
+# =============================================================
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install from the locked constraints
+        # constraints.txt pins the exact resolved versions; installing
+        # the package with all extras against it makes the environment
+        # reproducible run-to-run.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -c constraints.txt -e ".[rag,agents,bi,dev]"
+
+      - name: pip check (dependency graph is consistent)
+        run: pip check
+
+      - name: Lint (ruff — real-bug rules)
+        run: ruff check .
+
+      - name: Type check (mypy — typed modules)
+        # Scoped to the cleanly-typed modules (settings + db). The heavy
+        # phase modules lean on untyped third-party stubs (pyspark,
+        # langchain); widening mypy there would report library noise,
+        # not our bugs.
+        run: mypy fraud_platform/settings.py fraud_platform/db
+
+      - name: Security scan (bandit)
+        run: bandit -c pyproject.toml -r fraud_platform -ll
+
+      - name: Unit + integration tests (no external credentials)
+        run: pytest -q
