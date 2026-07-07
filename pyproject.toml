@@ -48,13 +48,24 @@ rag = [
 # Phase 3+ agents. langchain-core bound documented in requirements_agents.txt.
 agents = [
     "langgraph==1.0.10",
-    "langchain-core>=0.3,<0.4",
-    "langchain-groq>=0.3,<0.4",
+    # langchain-core/groq ranges match the VERIFIED-WORKING resolution
+    # (langchain-core 1.4.x, langchain-groq 1.1.x — see constraints.txt).
+    # The old >=0.3,<0.4 bounds were wrong: they contradicted the lock
+    # (which pins 1.4.8) AND were already documented as unsatisfiable
+    # with langgraph==1.0.10, so a `-c constraints.txt` install failed.
+    "langchain-core>=1.0,<2.0",
+    "langchain-groq>=1.0,<2.0",
+    # langgraph-prebuilt 1.0.9–1.0.13 import ExecutionInfo (absent in
+    # langgraph 1.0.10) and crash at import; pin to the working 1.0.8.
+    "langgraph-prebuilt==1.0.8",
     "langsmith",
 ]
 # Phase 7 BI. sqlglot is the NL2SQL security guardrail's parser.
 bi = [
-    "streamlit==1.32.0",
+    # streamlit 1.32 capped packaging<24, which conflicts with the
+    # newer `wheel` build tool (needs packaging>=24) and made a clean
+    # `pip check` impossible on Linux CI. >=1.37 dropped that cap.
+    "streamlit>=1.37,<2",
     "plotly==5.20.0",
     "sqlglot==25.34.0",
 ]

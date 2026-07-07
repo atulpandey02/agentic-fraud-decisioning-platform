@@ -29,12 +29,17 @@ jobs:
           cache: pip
 
       - name: Install from the locked constraints
-        # constraints.txt pins the exact resolved versions; installing
-        # the package with all extras against it makes the environment
-        # reproducible run-to-run.
+        # constraints.txt is the LINUX/CI lock (generated on python:3.10
+        # to match this runner) — it pins torch==2.x.x+cpu, so the
+        # PyTorch CPU index is required. Installing the package with all
+        # extras against the lock makes the CI environment reproducible
+        # and lets `pip check` verify the whole graph. (Local macOS dev
+        # uses the pyproject ranges via a plain `pip install -e`, since
+        # the +cpu torch build is Linux-only — see README.)
         run: |
           python -m pip install --upgrade pip
-          pip install -c constraints.txt -e ".[rag,agents,bi,dev]"
+          pip install -c constraints.txt -e ".[rag,agents,bi,dev]" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
 
       - name: pip check (dependency graph is consistent)
         run: pip check

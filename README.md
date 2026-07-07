@@ -33,12 +33,20 @@ scoring/accuracy analyses.
 ### Bootstrap (install)
 ```bash
 python3.10 -m venv venv && source venv/bin/activate
-pip install -e ".[rag,agents,bi,dev]"      # all groups, editable
-pip install -c constraints.txt -e .        # or: pin to the locked resolution
+# Local dev (any OS) — resolve from the pyproject ranges:
+pip install -e ".[rag,agents,bi,dev]"
+# Reproducible / CI install — pin to the LOCKED resolution. The lock
+# (constraints.txt) is generated on Linux to match CI and pins
+# torch==*+cpu, so it needs the PyTorch CPU index:
+pip install -c constraints.txt -e ".[rag,agents,bi,dev]" \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 pip check                                  # must report no broken requirements
 cp .env.example .env                       # then fill in credentials (if provided)
 ```
 Dependency groups mirror the phased install: `rag`, `agents`, `bi`, `dev`.
+`constraints.txt` is the **Linux/CI lock** (CPU torch); the CI workflow uses
+exactly the pinned command above. On macOS, prefer the plain range install —
+the `+cpu` torch build is Linux-only.
 
 ### Infrastructure up / down
 ```bash
