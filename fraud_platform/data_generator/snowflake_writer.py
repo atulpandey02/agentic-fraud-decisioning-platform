@@ -11,14 +11,13 @@
 #      that knows Snowflake exists
 # =============================================================
 
-import os
 import logging
 from typing import List, Dict
 
 import snowflake.connector
-from dotenv import load_dotenv
 
-load_dotenv()
+from fraud_platform.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,26 +31,39 @@ class SnowflakeWriter:
             writer.write_devices(devices)
     """
 
-    def __init__(self):
+    def __init__(self, role: str = None):
+        # Connection settings come from the ONE typed settings object
+        # (Priority 3), not scattered os.getenv. The role is the
+        # PIPELINE role by default — the data generator writes DIM + RAW,
+        # exactly PIPELINE_ROLE's grants — NOT ACCOUNTADMIN. The old
+        # role=ACCOUNTADMIN default is gone: no application path defaults
+        # to superuser.
+        s = get_settings()
         self._conn = None
+        self._role = role or s.pipeline_connect_role()
         self._conn_params = {
-            "account":   os.getenv("SNOWFLAKE_ACCOUNT"),
-            "user":      os.getenv("SNOWFLAKE_USER"),
-            "password":  os.getenv("SNOWFLAKE_PASSWORD"),
-            "database":  os.getenv("SNOWFLAKE_DATABASE", "FRAUD_DETECTION"),
-            "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
-            "role":      os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
-            "schema":    os.getenv("SNOWFLAKE_SCHEMA", "DIM"),
+            "account":   s.snowflake.account,
+            "user":      s.snowflake.user,
+            "password":  s.snowflake.password,
+            "database":  s.snowflake.database,
+            "warehouse": s.snowflake.warehouse,
+            "role":      self._role,
+            "schema":    "DIM",   # writes are fully-qualified; this is just the default
         }
 
     # ----------------------------------------------------------
     # CONNECTION MANAGEMENT
     # ----------------------------------------------------------
     def connect(self):
-        """Open Snowflake connection."""
+        """Open Snowflake connection, confined to the primary role."""
         if self._conn is None or self._conn.is_closed():
-            logger.info("Connecting to Snowflake...")
+            get_settings().snowflake.require_credentials()
+            logger.info("Connecting to Snowflake as %s...", self._role)
             self._conn = snowflake.connector.connect(**self._conn_params)
+            # Confine the session to the primary role (no secondary
+            # ACCOUNTADMIN riding along) — same rule as the pipeline and
+            # BI paths.
+            self._conn.cursor().execute("USE SECONDARY ROLES NONE")
             logger.info("Snowflake connection established.")
         return self
 
