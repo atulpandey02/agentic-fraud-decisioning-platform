@@ -22,7 +22,6 @@ import os
 import io
 import uuid
 import json
-import math
 import time
 import logging
 from abc import ABC, abstractmethod
@@ -49,6 +48,21 @@ from .window_config import (
     PRIMARY_SLIDE_DURATION,
     VELOCITY_FLAG_THRESHOLD as _VELOCITY_FLAG_THRESHOLD,
 )
+# The scoring/enrichment component (Priority 5 split). The pure scoring
+# functions and the per-row build now live in scoring.py; they are
+# re-exported here so existing imports (tests, other modules) that do
+# `from ...feature_engine import haversine_distance` keep working.
+from . import scoring
+from .scoring import (  # noqa: F401  (re-exported for backward-compat)
+    haversine_distance,
+    compute_implied_speed_kmh,
+    geo_hard_rule,
+    compute_risk_score,
+    build_feature_row,
+    to_snowflake_row,
+    utc_now,
+)
+from fraud_platform.db.validators import ValidationError
 
 load_dotenv()
 logging.basicConfig(
@@ -95,15 +109,12 @@ class FeatureEngineConfig:
     WINDOWS = VELOCITY_WINDOWS
     WATERMARK_DELAY = _WATERMARK_DELAY  # wait up to 10 min for late events
 
-    # Risk scoring weights (heuristic, pre-agent)
-    # These are directionally correct but not ML-tuned
-    RISK_WEIGHTS = {
-        "velocity_15min":  0.30,   # high weight — most reliable fraud signal
-        "amount_zscore":   0.25,   # strong signal for AMOUNT_ANOMALY
-        "geo_distance":    0.25,   # strong signal for GEO_JUMP
-        "new_device":      0.20,   # supporting signal, not standalone
-    }
-    RISK_FLAG_THRESHOLD = 0.60     # flag for agent review if score > 0.6
+    # Risk scoring weights + thresholds now live in scoring.py (the
+    # single source since the Priority 5 split); FeatureEngineConfig
+    # re-exports them so every existing `config.RISK_WEIGHTS` /
+    # `FeatureEngineConfig.RISK_FLAG_THRESHOLD` call site is unchanged.
+    RISK_WEIGHTS = scoring.RISK_WEIGHTS
+    RISK_FLAG_THRESHOLD = scoring.RISK_FLAG_THRESHOLD
 
     # -----------------------------------------------------------
     # HARD-RULE SINGLE-SIGNAL OVERRIDES — added Day 4
@@ -155,25 +166,17 @@ class FeatureEngineConfig:
     # process_batch and RedisFeatureWriter), which remove the
     # corruption the simulation can't model.
     # -----------------------------------------------------------
-    HARD_RULE_AMOUNT_THRESHOLD   = 0.95  # amt_signal >= this -> auto-flag
-    HARD_RULE_VELOCITY_THRESHOLD = 1.0   # v15 fully saturated (>=5 txns/15min,
-                                          # the actual JP Morgan threshold) -> auto-flag
-    HARD_RULE_GEO_MIN_JUMP_KM    = 3000.0  # distance arm of the composite geo rule
-    IMPOSSIBLE_TRAVEL_SPEED_KMH  = 900.0   # speed arm — commercial-jet ceiling,
-                                            # the same figure the generator injects against
-    SPEED_RULE_MIN_DISTANCE_KM   = 100.0   # floor under the speed arm (GPS-noise guard)
-
-    # Velocity normalization for risk scoring
-    # velocity_15min > 5 = JP Morgan flag threshold
-    VELOCITY_MAX_NORMAL = 5.0
-
-    # Geo normalization
-    # > 900 km/h = impossible travel (commercial jet speed)
-    GEO_MAX_NORMAL_KM = 500.0     # within 500km = normal domestic travel
-
-    # Amount z-score normalization
-    # z > 3 = 3 standard deviations = AMOUNT_ANOMALY
-    ZSCORE_MAX_NORMAL = 3.0
+    # Hard-rule + normalization thresholds — re-exported from scoring.py
+    # (single source). The full geo-rule rationale lives in scoring.py
+    # and GEO_FLAGGING_INVESTIGATION.md.
+    HARD_RULE_AMOUNT_THRESHOLD   = scoring.HARD_RULE_AMOUNT_THRESHOLD
+    HARD_RULE_VELOCITY_THRESHOLD = scoring.HARD_RULE_VELOCITY_THRESHOLD
+    HARD_RULE_GEO_MIN_JUMP_KM    = scoring.HARD_RULE_GEO_MIN_JUMP_KM
+    IMPOSSIBLE_TRAVEL_SPEED_KMH  = scoring.IMPOSSIBLE_TRAVEL_SPEED_KMH
+    SPEED_RULE_MIN_DISTANCE_KM   = scoring.SPEED_RULE_MIN_DISTANCE_KM
+    VELOCITY_MAX_NORMAL = scoring.VELOCITY_MAX_NORMAL
+    GEO_MAX_NORMAL_KM   = scoring.GEO_MAX_NORMAL_KM
+    ZSCORE_MAX_NORMAL   = scoring.ZSCORE_MAX_NORMAL
 
     # Redis
     REDIS_HOST    = os.getenv("REDIS_HOST", "localhost")
@@ -262,100 +265,9 @@ TRANSACTION_SCHEMA = StructType([
 ])
 
 
-# =============================================================
-# GEO CALCULATOR (UDF)
-# =============================================================
-def haversine_distance(lat1, lon1, lat2, lon2) -> float:
-    """
-    Haversine great-circle distance between two points in km.
-    Registered as a Spark UDF — runs on each executor, not driver.
-
-    Why Haversine and not Euclidean:
-        Earth is a sphere. Euclidean distance on lat/lon is wrong
-        at scale — it doesn't account for curvature. Haversine
-        gives the correct shortest-path distance on a sphere.
-        This is what production fraud systems use for impossible
-        travel detection (threshold: > 900 km/h implied speed).
-    """
-    if any(x is None for x in [lat1, lon1, lat2, lon2]):
-        return None
-
-    R = 6371.0  # Earth radius in km
-    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    return R * 2 * math.asin(math.sqrt(a))
-
-
-def compute_implied_speed_kmh(distance_km, time_since_last_min) -> Optional[float]:
-    """
-    Implied travel speed between consecutive transactions, km/h.
-
-    Returns None when no meaningful speed exists: missing inputs,
-    or a NON-POSITIVE time delta. The non-positive case is load-
-    bearing, not defensive boilerplate — GEO_FLAGGING_INVESTIGATION.md
-    measured that 80% of far-distance legitimate rows had a NEGATIVE
-    delta (out-of-order backfill events being compared against a
-    location the user visits in the event-time FUTURE). A speed
-    computed from that is noise wearing units.
-
-    Kept as a module-level pure function (like haversine_distance
-    above, unlike the batch logic in process_batch) so the scoring
-    rule is unit-testable without Spark, Redis, or Kafka.
-    """
-    if distance_km is None or not time_since_last_min or time_since_last_min <= 0:
-        return None
-    return distance_km / (time_since_last_min / 60.0)
-
-
-def geo_hard_rule(distance_km, implied_speed_kmh) -> bool:
-    """
-    The composite geo hard rule from GEO_FLAGGING_INVESTIGATION.md.
-
-    Speed arm: implied speed above the commercial-jet ceiling, with
-    a distance floor so GPS jitter over second-scale deltas can't
-    fabricate supersonic "speeds" out of meter-scale movement.
-    Distance arm: intercontinental-jump scale, needed because most
-    rows have no usable time delta and the speed arm alone would
-    collapse GEO_JUMP recall (99% -> 9%, measured).
-
-    Reads thresholds from FeatureEngineConfig class attributes
-    directly — this rule is part of the config's documented
-    contract, and the tests pin those values on purpose: changing
-    a threshold should require touching the config AND its test,
-    never just one.
-    """
-    if distance_km is None:
-        return False
-    if distance_km >= FeatureEngineConfig.HARD_RULE_GEO_MIN_JUMP_KM:
-        return True
-    return (
-        implied_speed_kmh is not None
-        and implied_speed_kmh > FeatureEngineConfig.IMPOSSIBLE_TRAVEL_SPEED_KMH
-        and distance_km >= FeatureEngineConfig.SPEED_RULE_MIN_DISTANCE_KM
-    )
-
-
-def compute_risk_score(v15, amt_signal, geo_signal, dev_signal, weights) -> float:
-    """
-    The weighted composite risk score — the "soft" half of the two-tier
-    scoring (the hard rules are geo_hard_rule + the amount/velocity
-    saturation checks). Each input is an already-normalized 0..1 signal;
-    the weighted sum is clamped to 1.0 and rounded.
-
-    Extracted to a module-level pure function (like haversine_distance
-    and geo_hard_rule) so the scoring formula is unit-testable without
-    Spark/Redis/Kafka — the weights come in as an argument so a test can
-    pin them and the class config stays the single production source.
-    """
-    score = (
-        weights["velocity_15min"] * v15 +
-        weights["amount_zscore"] * amt_signal +
-        weights["geo_distance"] * geo_signal +
-        weights["new_device"] * dev_signal
-    )
-    return round(min(score, 1.0), 4)
+# The geo calculator, implied-speed, geo-hard-rule, and risk-score
+# functions moved to scoring.py in the Priority 5 split and are
+# re-exported at the top of this module for backward compatibility.
 
 
 # =============================================================
@@ -1343,196 +1255,54 @@ class FraudFeatureEngine:
 
             features_list = []
             sf_rows = []
+            quarantined = 0
 
             for row in rows:
                 user_id = row["user_id"]
-                baseline = user_baselines.get(user_id, {})
-
-                # ---- Amount z-score ----
-                avg_amt    = baseline.get("avg_transaction_amt", 50.0)
-                stddev_amt = baseline.get("stddev_transaction_amt", 20.0)
-                amount     = float(row["amount"] or 0)
-                zscore     = (amount - avg_amt) / stddev_amt if stddev_amt > 0 else 0.0
-
-                # ---- Geo features from Redis state (in-memory lookup now) ----
-                last_loc = last_locations.get(user_id)
-                geo_distance_km      = None
-                time_since_last_min  = None
-                prev_city            = None
-                prev_ts              = None
-
-                if last_loc and row["latitude"] and row["longitude"]:
-                    try:
-                        geo_distance_km = haversine_distance(
-                            last_loc["lat"], last_loc["lon"],
-                            float(row["latitude"]), float(row["longitude"])
-                        )
-                        prev_city = last_loc.get("city")
-                        prev_ts   = last_loc.get("ts")
-
-                        if prev_ts:
-                            txn_ts = row["transaction_ts"]
-                            if txn_ts and prev_ts:
-                                try:
-                                    prev_dt = datetime.fromisoformat(str(prev_ts).replace("Z",""))
-                                    curr_dt = txn_ts if isinstance(txn_ts, datetime) else datetime.fromisoformat(str(txn_ts))
-                                    time_since_last_min = (curr_dt - prev_dt).total_seconds() / 60
-                                except Exception:
-                                    pass
-
-                        # ---- Ordering guard (GEO_FLAGGING_INVESTIGATION.md) ----
-                        # A non-positive delta means this event arrived out of
-                        # event-time order and the "previous" location is one
-                        # the user visits in the FUTURE — the distance is
-                        # meaningless, not merely imprecise. Null the derived
-                        # features (prev_city/prev_ts stay, as provenance of
-                        # what the state contained). Measured: 80% of the
-                        # false geo flags rode on exactly this corruption.
-                        if time_since_last_min is not None and time_since_last_min <= 0:
-                            geo_distance_km = None
-                            time_since_last_min = None
-                    except Exception as e:
-                        logger.warning(f"Geo computation failed for {user_id}: {e}")
-
-                # ---- New device flag ----
-                device_id  = row["device_id"]
-                user_devices = trusted_devices.get(user_id, set())
-                is_new_device = device_id not in user_devices if device_id else False
-
-                # ---- Velocity (from the concurrent velocity query) ----
-                velocity_15min = velocities.get(user_id, 0)
-
-                # ---- Risk score (weighted heuristic) ----
-                # Each signal normalized to 0-1 before weighting.
-                # velocity_15min is no longer a placeholder — it's the
-                # real count fetched from Redis above, written by the
-                # velocity streaming query running concurrently with
-                # this one. VELOCITY_MAX_NORMAL (5) matches the JP
-                # Morgan-style threshold researched Day 2: >5 txns in
-                # 15 min is already suspicious, so 5 is where this
-                # signal saturates to 1.0, not some arbitrary max.
-                v15 = min(velocity_15min / config.VELOCITY_MAX_NORMAL, 1.0)
-                amt_signal = min(abs(zscore) / config.ZSCORE_MAX_NORMAL, 1.0)
-                geo_signal = min((geo_distance_km or 0) / config.GEO_MAX_NORMAL_KM, 1.0)
-                dev_signal = 1.0 if is_new_device else 0.0
-
-                risk_score = compute_risk_score(
-                    v15, amt_signal, geo_signal, dev_signal, config.RISK_WEIGHTS
-                )
-
-                # ---- Flag decision: weighted score OR hard-rule override ----
-                # A same-weighted additive score can never flag a pure
-                # single-signal fraud pattern (max contribution from
-                # any one signal is its own weight, e.g. 0.25 for geo
-                # alone — never enough to cross 0.60 on its own, no
-                # matter how extreme). The hard rules below catch what
-                # the weighted score structurally cannot: an individual
-                # signal that is severe enough to be suspicious with
-                # zero corroboration needed. See HARD_RULE_* comments
-                # in FeatureEngineConfig for why new_device is excluded,
-                # and GEO_FLAGGING_INVESTIGATION.md for why geo's rule
-                # is speed-plus-jump-distance rather than the graded
-                # geo_signal it originally reused.
-                implied_speed_kmh = compute_implied_speed_kmh(
-                    geo_distance_km, time_since_last_min
-                )
-                geo_hard_triggered = geo_hard_rule(geo_distance_km, implied_speed_kmh)
-                hard_rule_triggered = (
-                    geo_hard_triggered or
-                    amt_signal >= config.HARD_RULE_AMOUNT_THRESHOLD or
-                    v15        >= config.HARD_RULE_VELOCITY_THRESHOLD
-                )
-                is_flagged = (risk_score > config.RISK_FLAG_THRESHOLD) or hard_rule_triggered
-
-                txn_ts_str = str(row["transaction_ts"]) if row["transaction_ts"] else None
-
-                feature_dict = {
-                    "snapshot_id":            str(uuid.uuid4()),
-                    "transaction_id":         row["transaction_id"],
-                    "user_id":                user_id,
-                    "user_surrogate_key":     baseline.get("surrogate_key", ""),
-                    "computed_at":            datetime.utcnow().isoformat(),
-                    "transaction_ts":         txn_ts_str,
-                    # velocity — 15min comes from the concurrent velocity
-                    # query (fetched via get_velocity_batch above). The
-                    # other three windows (5min, 1hr, 24hr) are defined
-                    # in window_config.VELOCITY_WINDOWS but not yet
-                    # implemented as running queries — 15min was built
-                    # first because it has a sourced production threshold
-                    # (JP Morgan-style, Day 2) to validate against.
-                    "velocity_5min":          None,
-                    "velocity_15min":         velocity_15min,
-                    "velocity_1hr":           None,
-                    "velocity_24hr":          None,
-                    # amount
-                    "txn_amount":             amount,
-                    "user_avg_amount":        avg_amt,
-                    "user_stddev_amount":     stddev_amt,
-                    "amount_zscore":          round(zscore, 4),
-                    # geo
-                    "prev_transaction_city":  prev_city,
-                    "prev_transaction_ts":    prev_ts,
-                    "geo_distance_km":        round(geo_distance_km, 2) if geo_distance_km else None,
-                    "time_since_last_txn_min":round(time_since_last_min, 2) if time_since_last_min else None,
-                    # device
-                    "is_new_device":          is_new_device,
-                    "device_id":              device_id,
-                    # transaction location (for next geo computation)
-                    "city":                   row["city"],
-                    "country":                row["country"],
-                    "latitude":               float(row["latitude"]) if row["latitude"] else None,
-                    "longitude":              float(row["longitude"]) if row["longitude"] else None,
-                    # Poisoning guard (GEO_FLAGGING_INVESTIGATION.md):
-                    # a location that itself tripped the geo hard rule
-                    # must not become the user's new baseline —
-                    # RedisFeatureWriter skips the :location update for
-                    # suspect rows, so one fraud in London can't make
-                    # every later home purchase look like a jump back.
-                    # Measured: 99% of users with false far-distance
-                    # flags had exactly this contamination.
-                    "suspect_location":       geo_hard_triggered,
-                    # risk
-                    "risk_score_raw":         risk_score,
-                    "is_flagged_for_review":  is_flagged,
-                    # ground truth (for eval)
-                    "is_synthetic_fraud":     row["is_synthetic_fraud"],
-                    "fraud_pattern":          row["fraud_pattern"],
-                }
+                try:
+                    # Enrichment + scoring + validation for one transaction
+                    # now lives in scoring.build_feature_row (Priority 5
+                    # split). It raises ValidationError on a corrupt row.
+                    feature_dict = build_feature_row(
+                        row,
+                        baseline=user_baselines.get(user_id, {}),
+                        last_loc=last_locations.get(user_id),
+                        velocity_15min=velocities.get(user_id, 0),
+                        user_devices=trusted_devices.get(user_id, set()),
+                        config=config,
+                    )
+                except ValidationError as e:
+                    # PER-TRANSACTION FAILURE ISOLATION (Priority 5): one
+                    # corrupt row (NaN amount, out-of-range risk score, bad
+                    # fraud_pattern enum) is QUARANTINED and logged with its
+                    # transaction_id as the correlation key. It never poisons
+                    # the micro-batch — every other transaction still
+                    # computes and persists.
+                    quarantined += 1
+                    logger.warning(
+                        "Quarantined transaction %s (batch %s): %s",
+                        row["transaction_id"], batch_id, e,
+                    )
+                    continue
+                except Exception as e:
+                    # Any other unexpected per-row failure is also isolated,
+                    # not allowed to fail the whole batch.
+                    quarantined += 1
+                    logger.error(
+                        "Quarantined transaction %s (batch %s) on unexpected error: %s",
+                        row.get("transaction_id") if hasattr(row, "get") else row["transaction_id"],
+                        batch_id, e,
+                    )
+                    continue
 
                 features_list.append(feature_dict)
+                sf_rows.append(to_snowflake_row(feature_dict))
 
-                # Snowflake row — subset of fields matching schema
-                sf_rows.append({
-                    "snapshot_id":              feature_dict["snapshot_id"],
-                    "transaction_id":           feature_dict["transaction_id"],
-                    "user_id":                  feature_dict["user_id"],
-                    "user_surrogate_key":        feature_dict["user_surrogate_key"],
-                    "computed_at":              datetime.utcnow(),
-                    "velocity_5min":            feature_dict["velocity_5min"],
-                    "velocity_15min":           feature_dict["velocity_15min"],
-                    "velocity_1hr":             feature_dict["velocity_1hr"],
-                    "velocity_24hr":            feature_dict["velocity_24hr"],
-                    "txn_amount":               feature_dict["txn_amount"],
-                    "user_avg_amount":          feature_dict["user_avg_amount"],
-                    "user_stddev_amount":       feature_dict["user_stddev_amount"],
-                    "amount_zscore":            feature_dict["amount_zscore"],
-                    "prev_transaction_city":    feature_dict["prev_transaction_city"],
-                    "prev_transaction_ts":      feature_dict["prev_transaction_ts"],
-                    "geo_distance_km":          feature_dict["geo_distance_km"],
-                    "time_since_last_txn_min":  feature_dict["time_since_last_txn_min"],
-                    "is_new_device":            feature_dict["is_new_device"],
-                    "device_id":                feature_dict["device_id"],
-                    "risk_score_raw":           feature_dict["risk_score_raw"],
-                    "is_flagged_for_review":    feature_dict["is_flagged_for_review"],
-                    # Ground truth — added Day 4. Without these two
-                    # fields, FACT_FEATURE_SNAPSHOTS has no way to
-                    # measure whether is_flagged_for_review is actually
-                    # correct. This was present in feature_dict (Redis)
-                    # the whole time but never carried through to the
-                    # Snowflake row until this fix.
-                    "is_synthetic_fraud":       feature_dict["is_synthetic_fraud"],
-                    "fraud_pattern":            feature_dict["fraud_pattern"],
-                })
+            if quarantined:
+                logger.warning(
+                    "Batch %s: %d of %d transactions quarantined by validation",
+                    batch_id, quarantined, len(rows),
+                )
 
             # Write to Redis (online store — agent reads here, always
             # immediate — every micro-batch, no buffering, since the
