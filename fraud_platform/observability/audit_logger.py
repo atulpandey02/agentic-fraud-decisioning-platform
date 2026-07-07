@@ -53,8 +53,12 @@ class AgentTraceWriter:
     for the not-a-Singleton reasoning).
     """
 
-    def __init__(self):
+    def __init__(self, redactor=None):
         self._conn = None
+        # The PII redactor runs on every trace before insert. Injectable
+        # so a test can pass a stricter one; defaults to the standard set.
+        from fraud_platform.observability.redaction import TraceRedactor
+        self._redactor = redactor or TraceRedactor()
 
     def _get_connection(self):
         if self._conn is None or self._conn.is_closed():
@@ -179,6 +183,13 @@ class AgentTraceWriter:
         ]
         if not rows:
             return 0
+
+        # REDACT direct PII before it touches Snowflake (Priority 1 item 7
+        # correction). get_user_history returns full_name / home_city /
+        # home_country; without this they would land verbatim in the
+        # tool_output VARIANT. transaction_id / user_id are preserved for
+        # audit joins. See observability/redaction.py.
+        rows = self._redactor.redact_rows(rows)
 
         cols = FACT_AGENT_TRACES_COLUMNS
         col_list = ", ".join(cols)
