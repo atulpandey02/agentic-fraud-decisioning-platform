@@ -37,8 +37,14 @@ from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
 from . import config
+from . import metrics
 from .langsmith_config import configure_langsmith
 from .audit_logger import AgentTraceWriter
+
+
+def _fmt(x) -> str:
+    """Format an Optional[float] metric for the report."""
+    return f"{x:.3f}" if isinstance(x, (int, float)) else "n/a"
 # This runner drives the orchestrator (Phase 4) and the governance
 # layer (Phase 5) — plain package imports now, no sys.path bridging.
 from fraud_platform.agents.multi_agent.orchestrator import FraudOrchestrator
@@ -123,19 +129,26 @@ class EvalRunner:
                     WHERE is_flagged_for_review = TRUE AND is_synthetic_fraud = FALSE
                     ORDER BY RANDOM() LIMIT {half}
                 )
-                SELECT snapshot_id, transaction_id, user_id, txn_amount,
-                       risk_score_raw, is_flagged_for_review, is_new_device,
-                       geo_distance_km, time_since_last_txn_min,
-                       amount_zscore, velocity_15min,
-                       is_synthetic_fraud, fraud_pattern
-                FROM fraud
-                UNION ALL
-                SELECT snapshot_id, transaction_id, user_id, txn_amount,
-                       risk_score_raw, is_flagged_for_review, is_new_device,
-                       geo_distance_km, time_since_last_txn_min,
-                       amount_zscore, velocity_15min,
-                       is_synthetic_fraud, fraud_pattern
-                FROM legit
+                -- INTERLEAVE the two strata (final ORDER BY RANDOM):
+                -- without it the fraud rows all come first, so a run cut
+                -- short by a rate limit sees only fraud and the metrics
+                -- are biased. Shuffling makes any PARTIAL run balanced.
+                SELECT * FROM (
+                    SELECT snapshot_id, transaction_id, user_id, txn_amount,
+                           risk_score_raw, is_flagged_for_review, is_new_device,
+                           geo_distance_km, time_since_last_txn_min,
+                           amount_zscore, velocity_15min,
+                           is_synthetic_fraud, fraud_pattern
+                    FROM fraud
+                    UNION ALL
+                    SELECT snapshot_id, transaction_id, user_id, txn_amount,
+                           risk_score_raw, is_flagged_for_review, is_new_device,
+                           geo_distance_km, time_since_last_txn_min,
+                           amount_zscore, velocity_15min,
+                           is_synthetic_fraud, fraud_pattern
+                    FROM legit
+                )
+                ORDER BY RANDOM()
                 """
             )
             cols = [d[0].lower() for d in cursor.description]
@@ -209,7 +222,9 @@ class EvalRunner:
                     f"{sum(1 for r in rows if not r['is_synthetic_fraud'])} legit)")
 
         results = []
+        aborted = None
         for i, record in enumerate(rows, 1):
+          try:
             transaction = {
                 "transaction_id": record["transaction_id"],
                 "user_id": record["user_id"],
@@ -252,18 +267,37 @@ class EvalRunner:
             results.append({
                 "decision": result["decision"],
                 "pattern": result["identified_pattern"] or "NONE",
+                "agent_pattern": result["identified_pattern"] or "NONE",
                 "truth_pattern": truth_pattern,
                 "is_fraud": is_fraud,
                 "correct": correct,
+                "confidence_score": result["confidence_score"],
+                "amount": result["amount"],
                 "judge_score": verdict.score,
                 "judge_notes": verdict.notes,
                 "tier": tier,
                 "latency_ms": latency_ms,
             })
+          except Exception as e:  # noqa: BLE001 — per-transaction isolation
+            # One transaction's failure (most often a Groq daily-token
+            # rate limit) must NOT discard the whole run. Log it, remember
+            # it, and stop cleanly so the summary below still prints the
+            # metrics for everything that DID complete. This is why a
+            # partial 50-txn run now yields a real scorecard instead of a
+            # bare traceback.
+            aborted = f"{type(e).__name__}: {str(e).splitlines()[0][:120]}"
+            logger.error("Eval stopped at %d/%d — %s", i, len(rows), aborted)
+            break
 
-        self._print_summary(results)
-        self._hitl.close()
-        self._trace_writer.close()
+        try:
+            if results:
+                self._print_summary(results)
+            if aborted:
+                print(f"\n*** RUN INCOMPLETE: stopped after {len(results)}/{len(rows)} "
+                      f"transactions — {aborted}")
+        finally:
+            self._hitl.close()
+            self._trace_writer.close()
 
     # ----------------------------------------------------------
     # SUMMARY
@@ -292,6 +326,27 @@ class EvalRunner:
               f"{sum(r['judge_score'] for r in results) / len(results):.2f}")
         print(f"Mean latency:                          "
               f"{sum(r['latency_ms'] for r in results) // len(results)} ms")
+
+        # Richer scorecard from the Priority 5 metrics module — the
+        # metrics a fraud team actually reviews (the 4 lines above are
+        # kept for continuity with the earlier 6-txn report).
+        m = metrics.compute_all(results)
+        c = m["classification"]
+        print("-" * 70)
+        print("CLASSIFICATION (BLOCK=positive, escalations excluded):")
+        print(f"  precision={_fmt(c['precision'])}  recall={_fmt(c['recall'])}  "
+              f"FPR={_fmt(c['false_positive_rate'])}  F1={_fmt(c['f1'])}")
+        print(f"  confusion: TP={c['tp']} FP={c['fp']} FN={c['fn']} TN={c['tn']}")
+        cal = m["calibration"]
+        print(f"CALIBRATION: Brier={_fmt(cal['brier_score'])} over {cal['n']} decided")
+        jc = m["judge_cross_check"]
+        print(f"JUDGE CROSS-CHECK: mean on correct={_fmt(jc['mean_judge_on_correct'])} "
+              f"vs incorrect={_fmt(jc['mean_judge_on_incorrect'])} "
+              f"(gap={_fmt(jc['agreement_gap'])})")
+        print("PER-PATTERN recall / pattern-id accuracy:")
+        for pat, b in sorted(m["per_pattern"].items()):
+            print(f"  {pat:15s} recall={_fmt(b['recall'])} "
+                  f"pattern_id={_fmt(b['pattern_id_accuracy'])} (n={b['n']})")
         print("=" * 70)
         print("All decisions, traces, and scores persisted to DECISIONS.*")
 
