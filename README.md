@@ -4,6 +4,13 @@ Real-time fraud decisioning: Kafka + Spark streaming features → Redis online
 store / Snowflake audit → RAG-grounded multi-agent decisions → governance &
 human-in-the-loop → agentic BI over the decision log.
 
+> **The story behind the code:** [`docs/index.html`](docs/index.html) is an
+> interactive single-page record of *how* this was built — the supervision
+> loop between a human and an autonomous coding agent, the bugs found twice,
+> the audit that contradicted an approval, and the metrics that lied.
+> Source of truth: [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md).
+> View locally: `python3 -m http.server 8710 --directory docs`.
+
 The code is one installable package, `fraud_platform`. Everything below assumes
 the repo root as the working directory and the virtualenv activated
 (`source venv/bin/activate`), or prefix commands with `./venv/bin/`.

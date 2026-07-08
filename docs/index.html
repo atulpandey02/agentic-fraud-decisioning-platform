@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Process Behind the Platform — supervising an AI agent that helped build an AI agent system</title>
+<meta name="description" content="An accurate record of how a fraud-decisioning agent platform was actually built: the supervision loop, the bugs found twice, the audit that contradicted an approval, and the metrics that lied.">
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#131a23; --panel:#161f2a; --panel2:#1b2634;
+    --line:#2a3646; --ink:#dbe4ee; --ink-dim:#8fa0b3; --ink-faint:#5d6d80;
+    --accent:#5cc8a5; --accent2:#e8b04b; --danger:#e0685e; --info:#6aa9e8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important;animation:none!important} }
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;font-size:16.5px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:.08em .35em;color:#c7d5e3}
+  h1,h2,h3{line-height:1.25;font-weight:650}
+  h2{font-size:1.7rem;margin:.2rem 0 .4rem}
+  h3{font-size:1.12rem;margin:0 0 .35rem}
+  .wrap{max-width:980px;margin:0 auto;padding:0 22px}
+  .kicker{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}
+  .dim{color:var(--ink-dim)}
+  .faint{color:var(--ink-faint)}
+  section{padding:64px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;gap:4px;align-items:center;overflow-x:auto;padding-top:10px;padding-bottom:10px}
+  nav .brand{font-family:var(--mono);font-size:.8rem;color:var(--ink-dim);margin-right:auto;white-space:nowrap}
+  nav a{font-size:.82rem;color:var(--ink-dim);padding:6px 10px;border-radius:6px;white-space:nowrap}
+  nav a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav a.active{color:var(--accent);background:var(--panel)}
+
+  /* hero */
+  header.hero{padding:88px 0 56px}
+  header.hero h1{font-size:clamp(1.9rem,4.6vw,3rem);margin:.3rem 0 1rem;max-width:21ch}
+  header.hero p.lede{font-size:1.12rem;color:var(--ink-dim);max-width:62ch}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:34px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .stat b{display:block;font-size:1.35rem;font-family:var(--mono);color:var(--ink)}
+  .stat span{font-size:.78rem;color:var(--ink-faint)}
+
+  /* loop stepper */
+  .loop{display:grid;grid-template-columns:220px 1fr;gap:22px;margin-top:26px}
+  @media(max-width:760px){.loop{grid-template-columns:1fr}}
+  .loop-steps{display:flex;flex-direction:column;gap:6px}
+  .loop-steps button{all:unset;cursor:pointer;padding:11px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink-dim);font-size:.88rem;display:flex;gap:10px;align-items:baseline}
+  .loop-steps button .n{font-family:var(--mono);color:var(--accent);font-size:.8rem}
+  .loop-steps button[aria-selected="true"]{background:var(--panel2);color:var(--ink);border-color:var(--accent)}
+  .loop-steps button:focus-visible{outline:2px solid var(--accent)}
+  .loop-detail{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 22px;min-height:190px}
+  .loop-detail h3{color:var(--accent)}
+  .loop-detail .example{margin-top:12px;padding:12px 14px;background:var(--bg2);border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;font-size:.9rem;color:var(--ink-dim)}
+  .loop-detail .example b{color:var(--ink)}
+
+  /* moment cards */
+  details.moment{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden}
+  details.moment summary{cursor:pointer;padding:18px 20px;list-style:none;display:flex;gap:14px;align-items:baseline}
+  details.moment summary::-webkit-details-marker{display:none}
+  details.moment summary .num{font-family:var(--mono);color:var(--accent2);font-size:.85rem;flex-shrink:0}
+  details.moment summary h3{margin:0;font-size:1.05rem}
+  details.moment summary .hint{margin-left:auto;color:var(--ink-faint);font-size:.75rem;font-family:var(--mono);flex-shrink:0}
+  details.moment[open] summary{border-bottom:1px solid var(--line)}
+  details.moment .body{padding:18px 20px 22px}
+  .fact-row{display:grid;grid-template-columns:110px 1fr;gap:8px 16px;margin:14px 0;font-size:.92rem}
+  .fact-row dt{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);padding-top:2px}
+  .fact-row dd{margin:0;color:var(--ink-dim)}
+  .fact-row dd b{color:var(--ink)}
+  .lesson{margin-top:14px;padding:12px 16px;background:var(--bg2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;font-size:.93rem}
+  .lesson b{color:var(--accent)}
+  .commitref{font-family:var(--mono);font-size:.76rem;color:var(--ink-faint)}
+  .commitref code{background:transparent;border:none;padding:0;color:var(--info)}
+
+  /* widgets */
+  .widget{margin-top:18px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .widget .wtitle{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent2);margin-bottom:10px}
+  .widget .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}
+  .widget label{font-size:.85rem;color:var(--ink-dim)}
+  .widget input[type="range"]{width:180px;accent-color:var(--accent)}
+  .widget select,.widget button.preset{font-family:var(--mono);font-size:.8rem;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer}
+  .widget button.preset:hover{border-color:var(--accent)}
+  .verdicts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  @media(max-width:600px){.verdicts{grid-template-columns:1fr}}
+  .verdict{border-radius:8px;padding:12px 14px;border:1px solid var(--line);font-size:.88rem}
+  .verdict .vname{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
+  .verdict.flag{border-color:var(--danger);background:rgba(224,104,94,.07)}
+  .verdict.pass{border-color:var(--accent);background:rgba(92,200,165,.06)}
+  .verdict .vres{font-weight:650}
+  .verdict.flag .vres{color:var(--danger)}
+  .verdict.pass .vres{color:var(--accent)}
+  .togglebar{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:max-content}
+  .togglebar button{all:unset;cursor:pointer;padding:8px 14px;font-size:.82rem;font-family:var(--mono);color:var(--ink-dim);background:var(--panel2)}
+  .togglebar button[aria-pressed="true"]{background:var(--accent);color:#08110d}
+  .qtable{width:100%;border-collapse:collapse;margin-top:12px;font-size:.85rem}
+  .qtable td,.qtable th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left}
+  .qtable th{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+  .qtable code{font-size:.8rem}
+  .pill{display:inline-block;padding:2px 10px;border-radius:99px;font-family:var(--mono);font-size:.72rem}
+  .pill.ok{background:rgba(92,200,165,.15);color:var(--accent)}
+  .pill.bad{background:rgba(224,104,94,.15);color:var(--danger)}
+  .pill.warn{background:rgba(232,176,75,.15);color:var(--accent2)}
+  .metricgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:12px}
+  .metric{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;text-align:center}
+  .metric b{display:block;font-family:var(--mono);font-size:1.15rem}
+  .metric span{font-size:.72rem;color:var(--ink-faint)}
+  .metric.vacuous b{color:var(--accent2)}
+  .metric.undef b{color:var(--danger)}
+  .widget .note{margin-top:12px;font-size:.83rem;color:var(--ink-dim)}
+  .widget .note.alert{color:var(--accent2)}
+
+  /* decisions */
+  .decision{display:grid;grid-template-columns:120px 1fr;gap:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:12px 0;font-size:.93rem}
+  @media(max-width:600px){.decision{grid-template-columns:1fr}}
+  .decision .tag{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;align-self:start;padding:4px 10px;border-radius:6px;text-align:center}
+  .decision .tag.yes{background:rgba(92,200,165,.13);color:var(--accent)}
+  .decision .tag.no{background:rgba(224,104,94,.13);color:var(--danger)}
+  .decision p{margin:.2rem 0 0;color:var(--ink-dim)}
+  .decision .src{font-family:var(--mono);font-size:.68rem;color:var(--ink-faint);margin-top:8px;display:block}
+
+  /* timeline */
+  .tl{margin-top:20px;border-left:2px solid var(--line);padding-left:22px}
+  .tl h3{color:var(--accent2);margin-top:26px}
+  .tl .item{position:relative;margin:12px 0;font-size:.9rem}
+  .tl .item::before{content:"";position:absolute;left:-27px;top:8px;width:8px;height:8px;border-radius:50%;background:var(--line)}
+  .tl .item.mark::before{background:var(--accent)}
+  .tl .item .c{font-family:var(--mono);font-size:.74rem;color:var(--info)}
+  .tl .item .d{color:var(--ink-dim)}
+
+  /* caveats + fidelity */
+  .caveat-box{background:linear-gradient(180deg,rgba(232,176,75,.08),transparent);border:1px solid rgba(232,176,75,.4);border-radius:12px;padding:22px 24px;margin-top:20px}
+  .caveat-box ul{margin:8px 0 0;padding-left:20px}
+  .caveat-box li{margin:10px 0;color:var(--ink-dim)}
+  .caveat-box li b{color:var(--ink)}
+  .fidelity{font-size:.92rem;color:var(--ink-dim)}
+  .fidelity .div{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:12px 0}
+  .fidelity .div b{color:var(--accent2)}
+
+  footer{border-top:1px solid var(--line);padding:36px 0 60px;font-size:.85rem;color:var(--ink-faint)}
+  footer .docs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  footer .docs span{font-family:var(--mono);font-size:.75rem;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px 10px;color:var(--ink-dim)}
+</style>
+</head>
+<body>
+
+<nav aria-label="Sections">
+  <div class="wrap">
+    <span class="brand">agentic-fraud-decisioning-platform / the process</span>
+    <a href="#story">Story</a>
+    <a href="#loop">The Loop</a>
+    <a href="#moments">Field Notes</a>
+    <a href="#decisions">Decisions</a>
+    <a href="#timeline">Timeline</a>
+    <a href="#caveats">Caveats</a>
+    <a href="#fidelity">Fidelity</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">A process record, not a product pitch</div>
+    <h1>An AI agent helped build an AI agent system. Here is what supervising it actually looked like.</h1>
+    <p class="lede">
+      This is the story behind a fraud-decisioning platform — a LangGraph agent team that reads
+      transaction features and decides <code>ALLOW</code> / <code>BLOCK</code> / <code>ESCALATE</code>.
+      Partway through, an autonomous coding agent (Claude Code) was brought in to build Phases 4–7 and
+      then harden the whole system. The interesting part isn’t just what got built. It’s the
+      supervision pattern: bounded tasks, self-reports read critically, claims cross-checked, and a
+      running count of the times “done” didn’t survive scrutiny.
+    </p>
+    <div class="statgrid">
+      <div class="stat"><b>25</b><span>commits, phases 1–7 + hardening + audit fixes</span></div>
+      <div class="stat"><b>16 → 244</b><span>passing tests over the hardening arc</span></div>
+      <div class="stat"><b>999,878</b><span>synthetic feature rows the agents decide against</span></div>
+      <div class="stat"><b>44.4% → 26.6%</b><span>flag rate after the geo investigation (truth: 17.3%)</span></div>
+      <div class="stat"><b>6</b><span>audit findings fixed in already-“approved” work</span></div>
+      <div class="stat"><b>2×</b><span>the same security bug class, found on two code paths</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="story">
+  <div class="wrap">
+    <div class="kicker">The meta-story</div>
+    <h2>An agent, building an agent, watched by a human</h2>
+    <p>
+      The platform’s core deliverable is itself an agent: a supervisor-pattern LangGraph team where a
+      router LLM dispatches specialist agents (features, risk, policy retrieval, decision) over a shared
+      blackboard, with hard invariants enforced in code — “no decision without policy grounding” is a
+      structural rule, not a prompt suggestion. Phases 1–3 (streaming features, RAG retrieval, the first
+      ReAct agent) were built by the human with a conversational assistant. From Phase 4 on, an autonomous
+      coding agent did the building — under explicit, repeated supervision.
+    </p>
+    <p class="dim">
+      That made the project a live experiment in a question the industry keeps asking abstractly:
+      <em>how much can you trust an autonomous agent’s own account of its work?</em> The honest answer
+      recorded here: quite a lot when its claims come with command output — and not at all when they don’t.
+      Several items reported as complete did not survive independent verification (see
+      <a href="#moments">Field Notes</a> #4 and the six audit fixes in the <a href="#timeline">timeline</a>).
+    </p>
+  </div>
+</section>
+
+<section id="loop">
+  <div class="wrap">
+    <div class="kicker">The working pattern</div>
+    <h2>The supervision loop, as actually practiced</h2>
+    <p class="dim">Every stage of Phases 4–7 and all five hardening priorities went through the same five steps. Click through them.</p>
+    <div class="loop">
+      <div class="loop-steps" role="tablist" aria-label="Supervision loop steps">
+        <button role="tab" aria-selected="true" data-step="0"><span class="n">01</span> Scope a bounded task</button>
+        <button role="tab" aria-selected="false" data-step="1"><span class="n">02</span> Agent builds &amp; reports</button>
+        <button role="tab" aria-selected="false" data-step="2"><span class="n">03</span> Read the report critically</button>
+        <button role="tab" aria-selected="false" data-step="3"><span class="n">04</span> Send back corrections</button>
+        <button role="tab" aria-selected="false" data-step="4"><span class="n">05</span> Stop-and-report gate</button>
+      </div>
+      <div class="loop-detail" id="loopDetail" role="tabpanel"></div>
+    </div>
+  </div>
+</section>
+
+<section id="moments">
+  <div class="wrap">
+    <div class="kicker">Field notes</div>
+    <h2>Five moments that actually happened</h2>
+    <p class="dim">
+      Each card follows the same structure: what was claimed or assumed, what the check found, and the
+      lesson that generalized. Three include small interactive demos that implement the <em>real</em>
+      rules and numbers from the codebase — not illustrations of them.
+    </p>
+
+    <!-- MOMENT 1 -->
+    <details class="moment" open>
+      <summary><span class="num">№1</span><h3>The security bug found twice, on two different code paths</h3><span class="hint">secondary roles</span></summary>
+      <div class="body">
+        <p>
+          During Priority 1 (security), the BI dashboard connected to Snowflake with
+          <code>role="BI_ROLE"</code> — a role with <em>no grant</em> on the PII schema — and a live check
+          showed it could still read <code>RAW.FACT_TRANSACTIONS</code>. The cause: Snowflake activates
+          <b>all</b> of a user’s granted roles as “secondary roles” by default. The operator’s own
+          <code>ACCOUNTADMIN</code> rode along silently and overrode the restriction. Picking the right
+          primary role restricted nothing; the fix was <code>USE SECONDARY ROLES NONE</code> plus a startup
+          assertion that the session is genuinely single-role.
+        </p>
+        <p>
+          Then it happened again. In a later round — the post-hardening audit-fix pass, while proving the
+          feature pipeline’s startup probe could run under <code>PIPELINE_ROLE</code> — the same class of
+          bug surfaced on a completely different code path: <code>PIPELINE_ROLE</code> could read
+          <code>DECISIONS</code>, a schema it had no grant on, through the same secondary-roles mechanism.
+          Same fix, second location, found by the agent’s own least-privilege test.
+        </p>
+        <dl class="fact-row">
+          <dt>Evidence</dt>
+          <dd><code>CURRENT_SECONDARY_ROLES()</code> returned <b>value “ALL”</b> (including ACCOUNTADMIN and ORGADMIN) on a plain <code>role="BI_ROLE"</code> connection; after the fix it returns an empty set, and the RAW read is denied while legitimate reads still work.</dd>
+          <dt>Commits</dt>
+          <dd><span class="commitref">BI path: <code>3bd6b7c</code> · pipeline path: <code>27f6daa</code></span></dd>
+        </dl>
+
+        <div class="widget" id="rolesWidget">
+          <div class="wtitle">Interactive · the secondary-roles trap (mirrors the real sessions)</div>
+          <div class="row">
+            <label for="srToggle">Session setup:</label>
+            <div class="togglebar" id="srToggle">
+              <button aria-pressed="true" data-mode="default">role="BI_ROLE" only</button>
+              <button aria-pressed="false" data-mode="fixed">+ USE SECONDARY ROLES NONE</button>
+            </div>
+          </div>
+          <table class="qtable">
+            <thead><tr><th>Query</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr><td><code>SELECT CURRENT_SECONDARY_ROLES()</code></td><td id="srState"></td></tr>
+              <tr><td><code>SELECT … FROM DECISIONS.FACT_DECISIONS</code></td><td id="srLegit"></td></tr>
+              <tr><td><code>SELECT … FROM RAW.FACT_TRANSACTIONS</code> <span class="faint">(PII, no grant)</span></td><td id="srRaw"></td></tr>
+            </tbody>
+          </table>
+          <div class="note" id="srNote"></div>
+        </div>
+
+        <div class="lesson"><b>Lesson generalized:</b> when one instance of a bug class is found, sweep every
+        similar code path for the same mistake instead of assuming it was a one-off. The second instance was
+        only caught because the later round tested least privilege <em>directly</em> rather than trusting the
+        role parameter.</div>
+      </div>
+    </details>
+
+    <!-- MOMENT 2 -->
+    <details class="moment">
+      <summary><span class="num">№2</span><h3>Three wrong dependency guesses in a row — then a different failure in the same place</h3><span class="hint">dependencies</span></summary>
+      <div class="body">
+        <p>
+          Setting up the LangGraph agent stack, three consecutive attempts to pin exact versions of
+          <code>langgraph</code> / <code>langchain-groq</code> / <code>langsmith</code> were wrong. The two
+          that are documented in the repo’s own file comments: <code>langchain-groq==0.2.10</code> named a
+          version that <em>did not exist</em>, and <code>langsmith&gt;=0.2.0</code> directly contradicted
+          what <code>langchain-core</code> actually required. The correction wasn’t a fourth guess — it was
+          to stop guessing: read pip’s real resolver output (which lists every version that actually exists)
+          and let the resolver pick, then pin what was <em>verified</em> working.
+        </p>
+        <p>
+          The sequel came much later, in the independent audit: the lockfile that made everything reproducible
+          locally had been frozen on macOS, and a genuinely clean Linux CI install failed on it three separate
+          ways (a range contradiction, a <code>packaging</code> version conflict via an old Streamlit cap, and
+          CUDA-variant torch on CPU runners). Local tests were green the whole time. The lock was regenerated
+          on Linux with CPU torch, and the exact CI command was proven in a fresh container.
+        </p>
+        <dl class="fact-row">
+          <dt>Evidence</dt>
+          <dd>The repo’s <code>requirements_agents.txt</code> header documented the failed guesses in place; audit fix <span class="commitref"><code>973c5fc</code></span> carries the clean-environment proof (fresh <code>python:3.10</code> container → install OK, <code>pip check</code> clean).</dd>
+        </dl>
+        <div class="lesson"><b>Lesson generalized:</b> “works on my machine” and “works in a clean environment”
+        are two different claims, and each needs its own test. Version numbers are facts to look up, not
+        plausibilities to recall.</div>
+      </div>
+    </details>
+
+    <!-- MOMENT 3 -->
+    <details class="moment">
+      <summary><span class="num">№3</span><h3>The geo-flagging investigation: a three-part root cause, not one bug</h3><span class="hint">44.4% → 26.6%</span></summary>
+      <div class="body">
+        <p>
+          The streaming scorer was flagging <b>44.4%</b> of ~1M transactions for review, against a 15%
+          injected fraud rate (17.3% measured in the table) — roughly 3× over-flagging. The rule of the round:
+          <em>no fix without an investigation first.</em> The investigation (run as SQL against the full
+          999,878-row history) attributed 75% of all flags to a single rule — “geo distance ≥ 475 km” —
+          operating at 17.3% precision, i.e. no better than the base rate. Underneath sat three stacked causes:
+        </p>
+        <dl class="fact-row">
+          <dt>Cause 1</dt><dd><b>Wrong concept.</b> The rule checked raw distance; the documented design concept was <em>implied travel speed</em> (&gt;900 km/h = physically impossible). 475 km is a domestic road trip, not impossible travel.</dd>
+          <dt>Cause 2</dt><dd><b>Out-of-order data.</b> 80% of far-distance legitimate rows had a <em>negative</em> time delta — the “previous location” was chronologically in the future, an artifact of randomized backfill replay.</dd>
+          <dt>Cause 3</dt><dd><b>State poisoning.</b> 99% of affected users (9,927 of 10,000) also had a GEO_JUMP fraud whose foreign location became their new baseline — so their next legitimate purchase at home looked like a second impossible jump.</dd>
+          <dt>Outcome</dt><dd>Fix addressed all three (speed-based composite rule + ordering guard + poisoning guard). Simulated on full history: flag rate <b>44.4% → 26.6%</b>, precision <b>33.3% → 52.6%</b>, GEO_JUMP recall held (99.2% → 98.9%). The report was required to say <b>“meaningfully improved, still over-flagging by ~1.5×”</b> — not “fixed”.</dd>
+          <dt>Commits</dt><dd><span class="commitref"><code>e3dbfe1</code> (investigation + fix, with GEO_FLAGGING_INVESTIGATION.md)</span></dd>
+        </dl>
+
+        <div class="widget" id="geoWidget">
+          <div class="wtitle">Interactive · old rule vs new rule (these are the real production thresholds)</div>
+          <div class="row">
+            <button class="preset" data-d="306" data-m="300">Boston→NYC, 5h</button>
+            <button class="preset" data-d="1400" data-m="720">Boston→Chicago, overnight</button>
+            <button class="preset" data-d="5265" data-m="40">Boston→London, 40min</button>
+            <button class="preset" data-d="2" data-m="0.08">GPS jitter, 5s</button>
+            <button class="preset" data-d="5265" data-m="-12">out-of-order replay</button>
+          </div>
+          <div class="row">
+            <label>Distance: <b id="geoDist"></b> km</label>
+            <input type="range" id="geoDistSlider" min="0" max="8000" step="1" value="1400">
+          </div>
+          <div class="row">
+            <label>Time since last transaction: <b id="geoMins"></b></label>
+            <input type="range" id="geoMinsSlider" min="-30" max="1440" step="any" value="720">
+          </div>
+          <div class="row"><span class="dim">Implied speed: <b id="geoSpeed"></b></span></div>
+          <div class="verdicts">
+            <div class="verdict" id="oldVerdict"><div class="vname">Old rule · distance ≥ 475 km</div><div class="vres"></div><div class="dim vwhy"></div></div>
+            <div class="verdict" id="newVerdict"><div class="vname">New rule · speed &gt; 900 km/h (≥100 km floor) OR distance ≥ 3000 km</div><div class="vres"></div><div class="dim vwhy"></div></div>
+          </div>
+          <div class="note">Negative or zero time deltas yield no speed — the ordering guard treats the geo evidence as unreliable rather than pretending it means something.</div>
+        </div>
+
+        <div class="lesson"><b>Lesson generalized:</b> an alarming aggregate number usually has more than one
+        cause. Attribute before you tune — a threshold tweak here would have hidden two data-corruption bugs
+        that the investigation surfaced and fixed at the source.</div>
+      </div>
+    </details>
+
+    <!-- MOMENT 4 -->
+    <details class="moment">
+      <summary><span class="num">№4</span><h3>An independent audit contradicted an “approved as complete” item</h3><span class="hint">policy ≠ control</span></summary>
+      <div class="body">
+        <p>
+          Priority 1 included the item “define redaction, retention, and access controls for prompts, traces,
+          names, locations…”. It was reported complete — and approved — on the strength of a written policy
+          document (<code>DATA_GOVERNANCE.md</code>) describing what should be protected. A later independent,
+          read-only audit checked the running system instead of the paperwork and found that <b>no redaction
+          code existed at all</b>: the user-history tool returned real names and home locations from
+          <code>DIM_USERS</code>, and the trace writer persisted them verbatim into audit storage on every run.
+        </p>
+        <p>
+          The correction (audit fix #2) built an actual <code>TraceRedactor</code> that runs before every
+          insert — hashing structured PII to stable pseudonyms and scrubbing quoted names from free-text
+          reasoning — plus a test asserting that <code>full_name</code> can never appear in a persisted field,
+          and a live write/read-back proof against the real database.
+        </p>
+        <dl class="fact-row">
+          <dt>Evidence</dt><dd>Live proof in the fix: a trace containing a name and city was written, the persisted rows were read back — name and city absent, <code>[REDACTED:…]</code> tokens present.</dd>
+          <dt>Commits</dt><dd><span class="commitref"><code>6368e20</code> (explicitly labeled a correction to a previously-approved item)</span></dd>
+        </dl>
+        <div class="lesson"><b>Lesson generalized:</b> a claim can be technically true (“a document exists”)
+        and false in the sense that matters (“nothing protects the data”). Approvals should attach to
+        <em>controls demonstrated in the running system</em>, not to artifacts about them. This was the
+        clearest trust-calibration moment in the whole project.</div>
+      </div>
+    </details>
+
+    <!-- MOMENT 5 -->
+    <details class="moment">
+      <summary><span class="num">№5</span><h3>A “clean” metric caught before it became a fact</h3><span class="hint">precision 1.0</span></summary>
+      <div class="body">
+        <p>
+          A 50-transaction evaluation run hit the LLM API’s free-tier daily token ceiling after 14
+          transactions. Salvaging metrics from the completed portion produced “precision 1.0” next to
+          “recall 0.50” — numbers that look citable. On inspection, the completed sample contained
+          <b>zero legitimate transactions</b> (the stratified sample wasn’t interleaved, so the fraud half ran
+          first). With no legitimate transaction present, a false positive was impossible: precision computed
+          to 1.0 <em>vacuously</em>, and the false-positive rate was literally undefined (0÷0). The number was
+          relabeled instead of reported, and the sampler was fixed to interleave strata so any partial run
+          stays balanced.
+        </p>
+        <dl class="fact-row">
+          <dt>Evidence</dt><dd>Confusion matrix of the completed sample: TP 6 · FP 0 · FN 6 · TN 0 — every completed row was ground-truth fraud.</dd>
+          <dt>Commits</dt><dd><span class="commitref"><code>d041e92</code> (interleaved sampling + per-transaction resilience + honest RUN INCOMPLETE labeling)</span></dd>
+        </dl>
+
+        <div class="widget" id="precWidget">
+          <div class="wtitle">Interactive · why that 1.0 meant nothing</div>
+          <div class="row">
+            <div class="togglebar" id="precToggle">
+              <button aria-pressed="true" data-mode="real">The actual partial sample</button>
+              <button aria-pressed="false" data-mode="hypo">A balanced sample (hypothetical)</button>
+            </div>
+          </div>
+          <div class="metricgrid" id="precMetrics"></div>
+          <div class="note" id="precNote"></div>
+        </div>
+
+        <div class="lesson"><b>Lesson generalized:</b> before repeating a metric, ask what data it was computed
+        on and whether the failure mode it measures was even possible in that sample. A perfect score on a
+        sample that cannot produce the error is not evidence — it’s an absence of opportunity.</div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="wrap">
+    <div class="kicker">Judgment calls</div>
+    <h2>Decisions made by reasoning, not convention</h2>
+    <p class="dim">
+      Two of these are notable for being decisions <em>not</em> to adopt something fashionable.
+      Source tags mark where each rationale is recorded.
+    </p>
+
+    <div class="decision"><span class="tag yes">adopted</span>
+      <div><h3>ReAct over Plan-and-Execute / Reflection</h3>
+      <p>The number of tool calls genuinely varies per transaction: a clear-cut case needs no user-history
+      lookup, a borderline one needs all three tools. A fixed plan can’t adapt to that without paying latency
+      on the easy cases; ReAct decides as it observes.</p>
+      <span class="src">source: agent design docstrings in the codebase + design discussions</span></div>
+    </div>
+
+    <div class="decision"><span class="tag yes">adopted</span>
+      <div><h3>LangGraph over CrewAI</h3>
+      <p>Two specific requirements sat squarely in LangGraph’s strengths: first-class cycles (the ReAct loop
+      is a cycle) and node-level human-in-the-loop interrupts (needed for the governance approval tiers).
+      Not a judgment that CrewAI is worse — a fit to two named requirements.</p>
+      <span class="src">source: design discussions (chat) — as recorded in PROJECT_NARRATIVE.md</span></div>
+    </div>
+
+    <div class="decision"><span class="tag yes">adopted</span>
+      <div><h3>Weaviate over Pinecone</h3>
+      <p>Verified, not assumed: Pinecone’s free tier <em>did</em> support hybrid search — but its sparse/dense
+      score balancing needed manual rebalancing, while Weaviate’s hybrid fusion is native. The deciding fact
+      was checked before it was believed.</p>
+      <span class="src">source: retrieval-layer docstrings in the codebase + design discussions</span></div>
+    </div>
+
+    <div class="decision"><span class="tag no">not adopted</span>
+      <div><h3>A2A protocol</h3>
+      <p>A real, current standard — for cross-organization agent interoperability. Every agent here is
+      internally owned, one team, one framework. There was no problem for it to solve yet, so it wasn’t added.</p>
+      <span class="src">source: design discussions (chat) — as recorded in PROJECT_NARRATIVE.md</span></div>
+    </div>
+
+    <div class="decision"><span class="tag no">not adopted</span>
+      <div><h3>Factory pattern</h3>
+      <p>Considered and rejected for the same reason: it earns its place only when there’s a genuine branching
+      decision about which class to instantiate. None existed at the time it was considered.</p>
+      <span class="src">source: design discussions (chat) — as recorded in PROJECT_NARRATIVE.md</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="timeline">
+  <div class="wrap">
+    <div class="kicker">The record</div>
+    <h2>Timeline, by real commits</h2>
+    <p class="dim">Every hash below exists in the repository history. Build first, then hardening — the second arc is where most of the field notes come from.</p>
+    <div class="tl">
+      <h3>Build — seven phases</h3>
+      <div class="item"><span class="c">97831d6</span> <span class="d">— initial structure + Snowflake schema (RAW / DIM / FEATURES / DECISIONS separation designed on day 1)</span></div>
+      <div class="item"><span class="c">40b85d5 · 39493fc</span> <span class="d">— synthetic data generators; scaled to 10K users / 10M-transaction backfill</span></div>
+      <div class="item"><span class="c">4db71f1 · 6aa887c · bbf2544</span> <span class="d">— Spark streaming feature engine; S3+Snowpipe ingestion, Redis N+1 fix; velocity merge + two-tier hard-rule scoring</span></div>
+      <div class="item"><span class="c">a5ddb88</span> <span class="d">— Phase 2: Weaviate hybrid-search RAG over authored fraud-policy docs</span></div>
+      <div class="item mark"><span class="c">e95ad76</span> <span class="d">— Phase 3: the single ReAct agent runs end to end (after three real blockers were found and fixed)</span></div>
+      <div class="item mark"><span class="c">79e70aa</span> <span class="d">— Phase 4: multi-agent supervisor — LLM routing, code-enforced invariants <span class="faint">(first phase built by the coding agent)</span></span></div>
+      <div class="item"><span class="c">2a4cb18</span> <span class="d">— Phase 5: governance tiers + human-in-the-loop; decisions become durable</span></div>
+      <div class="item"><span class="c">4c5d995</span> <span class="d">— Phase 6: agent traces, eval with LLM judge — the platform’s first honest scorecard</span></div>
+      <div class="item"><span class="c">b0f7015</span> <span class="d">— Phase 7: guarded NL2SQL BI over the decision audit log</span></div>
+
+      <h3>Hardening — five gated priorities, then an audit</h3>
+      <div class="item mark"><span class="c">e3dbfe1</span> <span class="d">— prerequisite investigations: the geo three-part root cause (Field Note №3) + pattern-ID input gap</span></div>
+      <div class="item mark"><span class="c">3bd6b7c</span> <span class="d">— P1 security: AST-based SQL validation, BI_ROLE confinement — the first secondary-roles discovery (№1)</span></div>
+      <div class="item"><span class="c">539a5ee · b8a1fe4</span> <span class="d">— P2 schema correctness: migrations, schema contract, atomic HITL reviews; known debt logged explicitly</span></div>
+      <div class="item"><span class="c">0da58e9</span> <span class="d">— P3 packaging: one installable package, typed settings, import hacks removed</span></div>
+      <div class="item"><span class="c">bea7fc0</span> <span class="d">— P4 tests + CI: 196 tests, lint/type/security gates, chunk-limit fix</span></div>
+      <div class="item"><span class="c">1a2107a</span> <span class="d">— P5 reliability: engine split, validators enforced in the live pipeline path, resilience primitives, real metrics</span></div>
+      <div class="item mark"><span class="c">973c5fc → d041e92</span> <span class="d">— six audit fixes to already-approved work: clean-env CI (№2), actual PII redaction (№4), portable RBAC, PIPELINE_ROLE probe — second secondary-roles find (№1), typed-settings writer, honest eval metrics (№5)</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="caveats">
+  <div class="wrap">
+    <div class="kicker">Read before being impressed</div>
+    <h2>Honest caveats</h2>
+    <div class="caveat-box">
+      <ul>
+        <li><b>This is a learning and portfolio project on synthetic data</b> — not a deployed commercial fraud system. Every transaction, user, and fraud pattern was generated.</li>
+        <li><b>Evaluation samples have been small</b> — as few as 6 transactions in one round, and the larger run completed only 14 of 50 before an API budget ceiling. No real statistical confidence has been established yet, and nothing on this page should be read as implying otherwise.</li>
+        <li><b>Not everything the coding agent reported as “done” survived scrutiny.</b> Several rounds required corrections after independent verification found gaps — six of them in work that had already been approved. That’s presented here deliberately: it is the most useful finding of the whole exercise, not a blemish on it.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="fidelity">
+  <div class="wrap">
+    <div class="kicker">How this page was made</div>
+    <h2>Fidelity notes</h2>
+    <div class="fidelity">
+      <p>
+        This site was generated from <code>PROJECT_NARRATIVE.md</code> (committed alongside it), with every
+        number, quote, and commit hash cross-checked against the working session records of the coding agent
+        that did the building. Nothing was invented to fill gaps. Where the narrative document and the session
+        records diverged, the records won, and the differences are disclosed here rather than papered over:
+      </p>
+      <div class="div">
+        <b>Timing of the second secondary-roles find (№1).</b> The narrative places it “during a different
+        priority (schema and processing correctness)”. Session records show it surfaced during the
+        <em>post-hardening audit-fix round</em> (commit <code>27f6daa</code>), while proving the pipeline’s
+        startup probe could run under <code>PIPELINE_ROLE</code>. The substance — same bug class, different
+        code path, found by the agent’s own testing — is unchanged.
+      </div>
+      <div class="div">
+        <b>Which number was “undefined” (№5).</b> The narrative calls the precision “mathematically undefined”.
+        Precisely: precision computed to 1.0 (6÷6) but was <em>vacuous</em> — the sample contained no
+        legitimate transactions, so a false positive was impossible; the <em>false-positive rate</em> was the
+        literally undefined quantity (0÷0). The conclusion — the number was not evidence and had to be
+        relabeled — is unchanged.
+      </div>
+      <p class="faint">
+        Sections of the narrative sourced from chat-side design discussions (LangGraph vs CrewAI, A2A, the
+        Factory decision) are presented at the level of detail the narrative provides and tagged as such —
+        those conversations are not in the coding agent’s records, so no detail was added to them.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Companion documents in the repository — the primary sources this page is built from:</div>
+    <div class="docs">
+      <span>PROJECT_NARRATIVE.md</span>
+      <span>PROJECT_STATUS.md</span>
+      <span>GEO_FLAGGING_INVESTIGATION.md</span>
+      <span>PATTERN_ID_INVESTIGATION.md</span>
+      <span>DATA_GOVERNANCE.md</span>
+      <span>REPLAY_STRATEGY.md</span>
+    </div>
+    <p style="margin-top:16px">
+      Repository: <a href="https://github.com/atulpandey02/agentic-fraud-decisioning-platform">atulpandey02/agentic-fraud-decisioning-platform</a>
+      · Built by Atul Pandey with Claude (chat) and Claude Code (autonomous agent).
+      This page is a static, dependency-free single file.
+    </p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- scrollspy ---------- */
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav a"));
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute("href").slice(1)] = a; });
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(a){ a.classList.remove("active"); });
+        var a = byId[e.target.id]; if(a) a.classList.add("active");
+      }
+    });
+  }, {rootMargin:"-30% 0px -60% 0px"});
+  document.querySelectorAll("section[id]").forEach(function(s){ obs.observe(s); });
+
+  /* ---------- supervision loop stepper ---------- */
+  var LOOP = [
+    {t:"Scope a specific, bounded task",
+     b:"Never “finish everything.” Each round had explicit boundaries: one phase, one priority, one fix list — with named deliverables and named exclusions.",
+     ex:"<b>Real example:</b> “Fix ONLY what is necessary to get one real transaction through the full ReAct loop. Do not refactor working Phase 1 or Phase 2 code.” And later: “STOP after Priority 1. Do not proceed to Priority 2.”"},
+    {t:"The agent builds, tests, and reports",
+     b:"The agent produced code plus a written report claiming results — with the standing rule that no success may be claimed without command output demonstrating it.",
+     ex:"<b>Real example:</b> the Priority 1 report included the live before/after of the secondary-roles fix: the RAW read succeeding, then being denied, with the exact session-state queries shown."},
+    {t:"Read the report critically",
+     b:"Specific numbers were cross-checked, vague claims pushed back on, and “done” was distinguished from “smoke-tested.” Reports were treated as claims to verify, not facts to file.",
+     ex:"<b>Real example:</b> a report cited 14 total decisions where an earlier one had cited 8 — the human flagged it and required a forensic duplicate-check before accepting “it’s just accumulation.” (It was: 14 distinct IDs, zero duplicates — but now that’s known, not assumed.)"},
+    {t:"Send back corrections as a new bounded prompt",
+     b:"Findings became the next round’s scope — including corrections to items previously approved, labeled as corrections rather than new work.",
+     ex:"<b>Real example:</b> the audit round: six numbered fixes, in order, each requiring its own commit and its own proof — including one explicitly framed as “a correction to a previously-approved item, not new scope. Report it as such.”"},
+    {t:"Stop-and-report gate",
+     b:"An explicit checkpoint after every stage. The agent stops even when it could continue; the human decides what happens next. The gates are where wrong claims got caught early instead of compounding.",
+     ex:"<b>Real example:</b> the hardening plan’s prerequisite gates worked exactly as designed — the agent verified them, found two failing (missing investigation docs, missing roles), and stopped with a report instead of proceeding."}
+  ];
+  var stepBtns = Array.prototype.slice.call(document.querySelectorAll(".loop-steps button"));
+  var detail = document.getElementById("loopDetail");
+  function showStep(i){
+    stepBtns.forEach(function(b,j){ b.setAttribute("aria-selected", j===i ? "true":"false"); });
+    var s = LOOP[i];
+    detail.innerHTML = "<h3>"+(i+1)+". "+s.t+"</h3><p class='dim'>"+s.b+"</p><div class='example'>"+s.ex+"</div>";
+  }
+  stepBtns.forEach(function(b){
+    b.addEventListener("click", function(){ showStep(parseInt(b.dataset.step,10)); });
+  });
+  showStep(0);
+
+  /* ---------- widget 1: secondary roles ---------- */
+  var srBtns = Array.prototype.slice.call(document.querySelectorAll("#srToggle button"));
+  function srRender(mode){
+    srBtns.forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.mode===mode ? "true":"false"); });
+    var st = document.getElementById("srState"),
+        legit = document.getElementById("srLegit"),
+        raw = document.getElementById("srRaw"),
+        note = document.getElementById("srNote");
+    legit.innerHTML = '<span class="pill ok">rows returned</span>';
+    if(mode==="default"){
+      st.innerHTML = '<code>{"value":"ALL"}</code> <span class="faint">— includes ACCOUNTADMIN, ORGADMIN</span>';
+      raw.innerHTML = '<span class="pill bad">rows returned — PII readable</span>';
+      note.className = "note alert";
+      note.textContent = "This is the trap: the primary role is BI_ROLE, but every other granted role is still active as a secondary role. The restriction is theater.";
+    } else {
+      st.innerHTML = '<code>{"roles":"","value":""}</code>';
+      raw.innerHTML = '<span class="pill ok">DENIED — SQL access error</span>';
+      note.className = "note";
+      note.textContent = "With secondary roles disabled, the session’s authority collapses to exactly BI_ROLE’s grants. This is what the codebase now asserts at startup — twice, after the same bug was found on the pipeline path.";
+    }
+  }
+  srBtns.forEach(function(b){ b.addEventListener("click", function(){ srRender(b.dataset.mode); }); });
+  srRender("default");
+
+  /* ---------- widget 2: geo rule (real production thresholds) ---------- */
+  var OLD_DIST = 475, NEW_JUMP = 3000, SPEED_LIMIT = 900, SPEED_FLOOR = 100;
+  var dSlider = document.getElementById("geoDistSlider"),
+      mSlider = document.getElementById("geoMinsSlider");
+  function fmtMins(m){
+    if(m<0) return m.toFixed(0)+" min (out-of-order!)";
+    if(m===0) return "0 min (no delta)";
+    if(m<1) return (m*60).toFixed(0)+" sec";
+    if(m>=60) return (m/60).toFixed(1)+" h";
+    return (m%1===0 ? m.toFixed(0) : m.toFixed(1))+" min";
+  }
+  function geoRender(){
+    var d = parseFloat(dSlider.value), m = parseFloat(mSlider.value);
+    document.getElementById("geoDist").textContent = d.toLocaleString();
+    document.getElementById("geoMins").textContent = fmtMins(m);
+    // The NEW pipeline applies the ORDERING GUARD before any rule: a
+    // non-positive delta means the "previous" location is in the
+    // event-time future, so the geo evidence is nulled entirely
+    // (mirrors build_feature_row). The OLD pipeline had no such guard.
+    var outOfOrder = (m<=0);
+    var effDist = outOfOrder ? null : d;                       // distance the NEW rule sees
+    var speed = outOfOrder ? null : d/(m/60);                  // compute_implied_speed_kmh
+    document.getElementById("geoSpeed").textContent =
+      speed===null ? "n/a — non-positive delta, geo evidence treated as unreliable"
+                   : Math.round(speed).toLocaleString()+" km/h";
+    // old rule: distance-only, no guard (geo_signal >= .95 at /500 normalization == dist >= 475)
+    var oldFlag = d >= OLD_DIST;
+    // new rule mirrors scoring.geo_hard_rule over the GUARDED evidence
+    var newFlag = effDist!==null &&
+      ((effDist >= NEW_JUMP) || (speed!==null && speed > SPEED_LIMIT && effDist >= SPEED_FLOOR));
+    function paint(id, flag, why){
+      var el = document.getElementById(id);
+      el.classList.toggle("flag", flag); el.classList.toggle("pass", !flag);
+      el.querySelector(".vres").textContent = flag ? "AUTO-FLAG" : "no hard flag";
+      el.querySelector(".vwhy").textContent = why;
+    }
+    paint("oldVerdict", oldFlag,
+      oldFlag ? (outOfOrder ? "≥475 km on corrupted out-of-order state — exactly how 80% of the false flags happened"
+                            : "≥475 km — this arm alone produced 331,620 flags at 17.3% precision")
+              : "under 475 km");
+    var whyNew;
+    if(outOfOrder) whyNew = "ordering guard: non-positive delta nulls the geo evidence before any rule runs";
+    else if(d >= NEW_JUMP) whyNew = "intercontinental-jump distance (≥3000 km)";
+    else if(speed!==null && speed > SPEED_LIMIT && d >= SPEED_FLOOR) whyNew = "implied speed exceeds 900 km/h";
+    else if(speed!==null && speed > SPEED_LIMIT) whyNew = "supersonic “speed” but under the 100 km floor — GPS-noise guard suppresses it";
+    else whyNew = "plausible travel: speed ≤ 900 km/h and distance < 3000 km";
+    paint("newVerdict", newFlag, whyNew);
+  }
+  dSlider.addEventListener("input", geoRender);
+  mSlider.addEventListener("input", geoRender);
+  document.querySelectorAll("#geoWidget .preset").forEach(function(b){
+    b.addEventListener("click", function(){
+      dSlider.value = b.dataset.d; mSlider.value = b.dataset.m; geoRender();
+    });
+  });
+  geoRender();
+
+  /* ---------- widget 3: precision vacuity ---------- */
+  var PREC = {
+    real:{tp:6,fp:0,fn:6,tn:0,
+      note:"The actual completed portion of the rate-limited run: every finished transaction happened to be ground-truth fraud (the sample wasn’t interleaved yet). Precision reads 1.0 — but with zero legitimate transactions, a false positive was impossible. The FPR is 0÷0: undefined. Neither number is evidence.",
+      label:"real data — the salvaged 12 decided rows (2 further escalations excluded)"},
+    hypo:{tp:6,fp:2,fn:6,tn:10,
+      note:"Hypothetical numbers, for contrast only (NOT project results): once legitimate transactions exist in the sample, precision and FPR become meaningful — they now measure something that had a chance to fail.",
+      label:"hypothetical — illustrative only"}
+  };
+  var precBtns = Array.prototype.slice.call(document.querySelectorAll("#precToggle button"));
+  function precRender(mode){
+    precBtns.forEach(function(b){ b.setAttribute("aria-pressed", b.dataset.mode===mode ? "true":"false"); });
+    var c = PREC[mode];
+    var precDefined = (c.tp+c.fp)>0, fprDefined = (c.fp+c.tn)>0;
+    var precision = precDefined ? (c.tp/(c.tp+c.fp)) : null;
+    var recall = (c.tp+c.fn)>0 ? (c.tp/(c.tp+c.fn)) : null;
+    var fpr = fprDefined ? (c.fp/(c.fp+c.tn)) : null;
+    var vac = (mode==="real");
+    function cell(v, lbl, cls){
+      return '<div class="metric '+(cls||"")+'"><b>'+v+"</b><span>"+lbl+"</span></div>";
+    }
+    document.getElementById("precMetrics").innerHTML =
+      cell("TP "+c.tp+" · FP "+c.fp,"blocked (fraud · legit)") +
+      cell("FN "+c.fn+" · TN "+c.tn,"allowed (fraud · legit)") +
+      cell(precision===null?"—":precision.toFixed(2)+(vac?" ⚠":""), vac?"precision (VACUOUS)":"precision", vac?"vacuous":"") +
+      cell(recall===null?"—":recall.toFixed(2),"recall") +
+      cell(fpr===null?"undefined":fpr.toFixed(2), fpr===null?"FPR (0÷0)":"false-positive rate", fpr===null?"undef":"");
+    var note = document.getElementById("precNote");
+    note.className = "note"+(vac?" alert":"");
+    note.innerHTML = "<b>"+c.label+".</b> "+c.note;
+  }
+  precBtns.forEach(function(b){ b.addEventListener("click", function(){ precRender(b.dataset.mode); }); });
+  precRender("real");
+})();
+</script>
+</body>
+</html>
