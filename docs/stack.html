@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tech Stack — what each tool does in this system, and why</title>
+<meta name="description" content="Every major tool in the fraud-decisioning platform: its role in this specific system, the recorded reasoning behind choosing it, and a real code snippet from the repo.">
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#131a23; --panel:#161f2a; --panel2:#1b2634;
+    --line:#2a3646; --ink:#dbe4ee; --ink-dim:#8fa0b3; --ink-faint:#5d6d80;
+    --accent:#5cc8a5; --accent2:#e8b04b; --danger:#e0685e; --info:#6aa9e8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important} }
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;font-size:16.5px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:.08em .35em;color:#c7d5e3}
+  h1,h2,h3{line-height:1.25;font-weight:650}
+  h2{font-size:1.5rem;margin:.2rem 0 .4rem}
+  h3{font-size:1.1rem;margin:0 0 .3rem}
+  .wrap{max-width:980px;margin:0 auto;padding:0 22px}
+  .kicker{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}
+  .dim{color:var(--ink-dim)}
+  .faint{color:var(--ink-faint)}
+  nav{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;gap:4px;align-items:center;overflow-x:auto;padding-top:10px;padding-bottom:10px}
+  nav .brand{font-family:var(--mono);font-size:.8rem;color:var(--ink-dim);margin-right:auto;white-space:nowrap}
+  nav a{font-size:.82rem;color:var(--ink-dim);padding:6px 10px;border-radius:6px;white-space:nowrap}
+  nav a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav a.here{color:var(--accent);background:var(--panel)}
+  header.page{padding:64px 0 30px}
+  header.page h1{font-size:clamp(1.7rem,4vw,2.5rem);margin:.3rem 0 .8rem}
+  header.page p{color:var(--ink-dim);max-width:66ch}
+
+  .tool{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:18px 0;padding:20px 22px}
+  .tool .toolhead{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+  .tool .toolhead .cat{margin-left:auto;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);border:1px solid var(--line);border-radius:99px;padding:3px 10px}
+  .tool .role{margin:.5rem 0 0;color:var(--ink-dim)}
+  .why{margin-top:14px;padding:12px 16px;background:var(--bg2);border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;font-size:.92rem}
+  .why b{color:var(--accent2)}
+  .why.compared{border-left-color:var(--accent)}
+  .why.compared b{color:var(--accent)}
+  .why .srcnote{display:block;margin-top:8px;font-family:var(--mono);font-size:.68rem;color:var(--ink-faint)}
+  pre.code{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.55;color:#c7d5e3;margin:14px 0 4px}
+  pre.code .cmt{color:#5d6d80}
+  .srcfile{font-family:var(--mono);font-size:.7rem;color:var(--info);margin-top:2px}
+  .fidelity-inline{margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;font-size:.9rem;color:var(--ink-dim)}
+  .fidelity-inline b{color:var(--accent2)}
+  footer{border-top:1px solid var(--line);margin-top:56px;padding:32px 0 56px;font-size:.85rem;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+
+<nav aria-label="Site">
+  <div class="wrap">
+    <span class="brand">agentic-fraud-decisioning-platform / the process</span>
+    <a href="index.html">Story</a>
+    <a href="index.html#moments">Field Notes</a>
+    <a href="stack.html" class="here">Stack</a>
+    <a href="architecture.html">Architecture</a>
+  </div>
+</nav>
+
+<header class="page">
+  <div class="wrap">
+    <div class="kicker">The tools, honestly</div>
+    <h1>Tech stack — what each piece does <em>here</em>, and why it was picked</h1>
+    <p>
+      One entry per major tool actually used. For each: its concrete job in <em>this</em> system, the
+      recorded reasoning behind it, and a real snippet from the repo showing it in use. Where a genuine
+      alternative was considered, the comparison is shown; where none was recorded, that is said plainly
+      instead of inventing a plausible-sounding bake-off. See the fidelity note at the bottom.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- KAFKA -->
+  <div class="tool" id="kafka">
+    <div class="toolhead"><h2>Apache Kafka</h2><span class="cat">event transport</span></div>
+    <p class="role">The transaction firehose. The synthetic generator produces transactions (including a
+    10M-row backfill) onto one topic; the Spark feature engine consumes it. Runs in KRaft mode (no
+    Zookeeper), keyed by <code>user_id</code> so every event for a user lands on the same partition —
+    which is what makes per-user windowed aggregation shuffle-friendly downstream. 12 partitions, sized
+    to give 12 parallel Spark tasks; 7-day retention because Snowflake, not Kafka, is the system of record.</p>
+    <div class="why"><b>Why (as recorded):</b> the design notes in <code>docker-compose.yml</code> record the
+      KRaft choice, the user-keying rationale, and the partition sizing (bumped from 3 to 12 when the user
+      pool scaled to 10,000). <span class="srcnote">No alternative message broker was compared in the repo or
+      narrative — Kafka was the starting assumption, so no invented comparison is offered here.</span></div>
+    <pre class="code"><span class="cmt"># docker-compose.yml — the recorded design notes</span>
+# KAFKA (KRaft — no Zookeeper)
+# user_id as message key → all events per user to same partition
+# 12 partitions = 12 parallel Spark tasks (bumped from 3 — at
+# 10,000 users, more partitions show real parallel consumption)
+# retention 7 days — Snowflake is the audit system of record</pre>
+    <div class="srcfile">docker-compose.yml</div>
+  </div>
+
+  <!-- SPARK -->
+  <div class="tool" id="spark">
+    <div class="toolhead"><h2>Spark Structured Streaming</h2><span class="cat">feature computation</span></div>
+    <p class="role">Consumes the Kafka topic and computes per-transaction fraud features in micro-batches:
+    amount z-score against the user's baseline, Haversine geo-distance from Redis state, new-device flag,
+    sliding-window velocity (a second concurrent query), and the two-tier risk score. Uses
+    <code>foreachBatch</code> as the sink because Spark has no native Redis or Snowflake streaming sink —
+    a rationale recorded in the engine's own docstrings. Windows are event-time based on
+    <code>transaction_ts</code>, not processing time (“fraud velocity = what the user DID, not when Spark
+    read it”).</p>
+    <div class="why"><b>Why (as recorded):</b> the choice is documented by its constraints — event-time sliding
+      windows with watermarks, and <code>maxOffsetsPerTrigger</code> bounding backfill batches.
+      <span class="srcnote">No alternative stream processor was compared in the repo or narrative.</span></div>
+    <pre class="code">def _read_kafka_stream(self) -> DataFrame:
+    return (
+        self._spark.readStream
+        .format("kafka")
+        .option("kafka.bootstrap.servers", self._config.KAFKA_BOOTSTRAP_SERVERS)
+        .option("subscribe", self._config.KAFKA_TOPIC)
+        .option("startingOffsets", self._config.KAFKA_STARTING_OFFSETS)
+        .option("kafka.group.id", self._config.KAFKA_GROUP_ID)
+        <span class="cmt"># Max messages per partition per micro-batch …</span>
+        .option("maxOffsetsPerTrigger", 50_000)
+        .load()
+    )</pre>
+    <div class="srcfile">fraud_platform/stream_processing/feature_engine.py</div>
+  </div>
+
+  <!-- REDIS -->
+  <div class="tool" id="redis">
+    <div class="toolhead"><h2>Redis</h2><span class="cat">online feature store</span></div>
+    <p class="role">The low-latency store the agents actually read at decision time. Two key families:
+    <code>user:{id}:features</code> (the full snapshot the agent's <code>get_transaction_features</code>
+    tool fetches) and <code>user:{id}:location</code> (geo state for the next Haversine computation —
+    kept separate so internal pipeline state doesn't pollute agent reads). 24-hour TTL: stale features
+    self-expire.</p>
+    <div class="why"><b>Real recorded evolution — batch reads over per-row reads:</b> the original loop did one
+      Redis <code>GET</code> per transaction — 10,000 network round trips per micro-batch. The recorded fix
+      replaced it with a single <code>MGET</code> per batch, and the timing was logged explicitly so the fix is
+      <em>observable</em>, not assumed. <span class="srcnote">Redis itself vs another KV store was not compared
+      in the repo or narrative; the recorded engineering is in how it's used.</span></div>
+    <pre class="code">unique_user_ids = list(set(user_ids))
+keys = [f"user:{uid}:location" for uid in unique_user_ids]
+
+try:
+    raw_values = self._client.mget(keys)  <span class="cmt"># ONE round trip</span>
+except Exception as e:
+    logger.warning(f"Redis MGET batch failed: {e}")
+    return {uid: None for uid in unique_user_ids}</pre>
+    <div class="srcfile">fraud_platform/stream_processing/feature_engine.py — RedisFeatureWriter.get_last_locations_batch</div>
+  </div>
+
+  <!-- SNOWFLAKE -->
+  <div class="tool" id="snowflake">
+    <div class="toolhead"><h2>Snowflake</h2><span class="cat">warehouse + audit system of record</span></div>
+    <p class="role">Four schemas, deliberately split by access domain on day 1: <code>RAW</code>
+    (PII transactions, pipeline-only), <code>DIM</code> (user/device baselines), <code>FEATURES</code>
+    (computed snapshots — 999,878 rows), <code>DECISIONS</code> (agent decisions + full reasoning traces).
+    Role-based access (<code>PIPELINE_ROLE</code> / <code>AGENT_ROLE</code> / <code>BI_ROLE</code>) maps onto
+    those schemas — the boundary at the center of the twice-found secondary-roles bug
+    (<a href="index.html#moments">Field Note №1</a>).</p>
+    <div class="why"><b>Why (as recorded):</b> the schema-per-access-domain design principle is written at the top
+      of <code>snowflake/schema.sql</code>; VARIANT columns hold JSON tool inputs/outputs in the trace table.
+      <span class="srcnote">No alternative warehouse was compared in the repo or narrative.</span></div>
+    <pre class="code"><span class="cmt">-- snowflake/schema.sql — the recorded design principles</span>
+-- Design principles:
+--   - Separate schemas per access domain (security + clarity)
+--   - RAW: pipeline writes only, no agent access
+--   - FEATURES: pipeline writes, agents read
+--   - DECISIONS: agents write, BI agent reads
+--   - DIM: pipeline writes, agents read (baseline context)</pre>
+    <div class="srcfile">snowflake/schema.sql</div>
+  </div>
+
+  <!-- S3 + SNOWPIPE -->
+  <div class="tool" id="snowpipe">
+    <div class="toolhead"><h2>S3 + Snowpipe</h2><span class="cat">bulk ingestion path</span></div>
+    <p class="role">The offline write path for feature snapshots: rows buffer in memory across micro-batches,
+    flush as one snappy-compressed Parquet file to S3, and Snowpipe (AUTO_INGEST via SQS) loads it into
+    <code>FACT_FEATURE_SNAPSHOTS</code> — no polling, no manual COPY.</p>
+    <div class="why compared"><b>Real recorded replacement:</b> this <em>replaced</em> row-by-row
+      <code>executemany</code> inserts through the Python connector, which the repo records as “taking minutes
+      per micro-batch and becoming the dominant bottleneck in the whole pipeline.” Buffering also addresses the
+      classic “small files problem” — the docstring explains why a 3-row Parquet file every 30 seconds is waste.
+      <span class="srcnote">Source: S3FeatureWriter docstrings — a genuine before/after that actually happened,
+      not a hypothetical comparison.</span></div>
+    <pre class="code">table = pa.Table.from_pylist(self._buffer)
+buf = io.BytesIO()
+pq.write_table(table, buf, compression="snappy")
+<span class="cmt"># File naming includes a UUID + timestamp to guarantee uniqueness —</span>
+<span class="cmt"># Snowpipe processes each file exactly once by object key, so</span>
+<span class="cmt"># colliding names would silently drop data.</span>
+key = f"{self._config.S3_PREFIX}/features_{timestamp}_{file_id}.parquet"
+self._s3_client.put_object(Bucket=self._config.S3_BUCKET, Key=key, Body=buf.getvalue())</pre>
+    <div class="srcfile">fraud_platform/stream_processing/feature_engine.py — S3FeatureWriter.flush</div>
+  </div>
+
+  <!-- WEAVIATE -->
+  <div class="tool" id="weaviate">
+    <div class="toolhead"><h2>Weaviate</h2><span class="cat">vector store / RAG retrieval</span></div>
+    <p class="role">Holds the fraud-policy knowledge base: authored policy docs and case studies, chunked
+    by Markdown section, embedded locally (all-MiniLM-L6-v2), and searched with <em>hybrid</em>
+    BM25-plus-vector queries. The agent's <code>get_policy_context</code> tool is a thin wrapper over this,
+    with an optional per-pattern filter.</p>
+    <div class="why compared"><b>Real comparison — Weaviate over Pinecone:</b> per the project narrative, it was
+      <em>verified, not assumed</em>, that Pinecone's free tier did support hybrid search — but its sparse/dense
+      score balancing needed manual rebalancing, while Weaviate's fusion is native. The same reasoning is
+      recorded in the code itself: <span class="srcnote">source: PROJECT_NARRATIVE.md “Design decisions” + the
+      hybrid_search docstring quoted below.</span></div>
+    <pre class="code">def hybrid_search(self, query_text, query_vector, alpha=HYBRID_SEARCH_ALPHA, ...):
+    """
+    Hybrid search combining BM25 keyword scoring and vector
+    similarity, natively fused by Weaviate — no manual score
+    normalization needed, unlike Pinecone's sparse-dense
+    pattern which requires explicit rebalancing before
+    production use.
+    ...
+    """
+    if pattern_filter:
+        query_kwargs["filters"] = Filter.by_property("pattern").equal(pattern_filter)
+    response = collection.query.hybrid(**query_kwargs)</pre>
+    <div class="srcfile">fraud_platform/retrieval/weaviate_client.py — FraudKnowledgeBase.hybrid_search</div>
+  </div>
+
+  <!-- LANGGRAPH -->
+  <div class="tool" id="langgraph">
+    <div class="toolhead"><h2>LangGraph</h2><span class="cat">agent orchestration</span></div>
+    <p class="role">The framework both agent architectures are built on: the Phase 3 single agent is an
+    explicit ReAct <code>StateGraph</code> (built by hand rather than with the <code>create_react_agent</code>
+    prebuilt, specifically to keep the loop mechanics visible), and the Phase 4 multi-agent system is a
+    supervisor graph routing between four specialists. The full mechanical walkthrough lives on the
+    <a href="architecture.html">Architecture page</a>.</p>
+    <div class="why compared"><b>Real comparison — LangGraph over CrewAI:</b> per the project narrative, two
+      specific requirements decided it: first-class support for <em>cycles</em> (the ReAct loop is a cycle)
+      and node-level <em>human-in-the-loop interrupts</em> (needed for the governance approval tiers) — “not
+      because CrewAI is worse, but because those two specific requirements sit in LangGraph's strengths.”
+      <span class="srcnote">Source: PROJECT_NARRATIVE.md “Design decisions” (chat-side reasoning, presented at
+      the narrative's level of detail).</span></div>
+    <pre class="code">graph = StateGraph(AgentState)
+graph.add_node("agent", self._call_model)
+graph.add_node("tools", ToolNode(ALL_TOOLS))
+graph.add_node("finalize", self._finalize)
+graph.add_edge(START, "agent")
+graph.add_conditional_edges("agent", self._should_continue,
+                            {"tools": "tools", "finalize": "finalize"})
+graph.add_edge("tools", "agent")   <span class="cmt"># the ReAct cycle</span>
+graph.add_edge("finalize", END)</pre>
+    <div class="srcfile">fraud_platform/agents/single_agent/agent.py — FraudDecisioningAgent._build_graph</div>
+  </div>
+
+  <!-- GROQ -->
+  <div class="tool" id="groq">
+    <div class="toolhead"><h2>Groq (llama-3.3-70b-versatile)</h2><span class="cat">LLM provider</span></div>
+    <p class="role">Serves every LLM role in the system: the single agent, the router and four specialists,
+    the NL2SQL generator, and the LLM-as-judge (at temperature 0). Temperature for the agents is 0.1 —
+    the config records why not zero. Groq's free-tier 100K tokens/day ceiling is also a real character in
+    this story: it cut the 50-transaction eval at 14 (<a href="index.html#moments">Field Note №5</a>).</p>
+    <div class="why"><b>Why (as recorded):</b> the original config docstring recorded that this exact model was
+      “already proven working in the earlier Agentic DQ Monitor project,” plus a warning that model IDs on
+      inference providers churn fast. The judge sharing the agents' model family is a disclosed limitation,
+      cross-checked by an outcome-agreement metric. <span class="srcnote">No provider bake-off was recorded —
+      continuity from a prior project was the stated reason.</span></div>
+    <pre class="code">GROQ_API_KEY = _s.llm.groq_api_key
+LLM_MODEL_NAME = _s.llm.agent_model
+LLM_TEMPERATURE = 0.1   <span class="cmt"># low, not zero — fraud reasoning should be
+                         # consistent, but zero temperature on some
+                         # providers degrades tool-calling reliability</span></pre>
+    <div class="srcfile">fraud_platform/agents/single_agent/config.py</div>
+  </div>
+
+  <!-- SQLGLOT -->
+  <div class="tool" id="sqlglot">
+    <div class="toolhead"><h2>sqlglot</h2><span class="cat">SQL security guardrail</span></div>
+    <p class="role">The AST parser behind the BI dashboard's NL2SQL guardrail. LLM-generated SQL is parsed
+    into a syntax tree and validated <em>structurally</em>: single statement, SELECT/CTE shapes only, every
+    table reference fully qualified and allowlisted (the PII schema isn't on the list), dynamic identifiers
+    and table functions rejected, the row cap enforced even when the model writes a bigger LIMIT — and the
+    <em>re-serialized</em> AST is what executes, not the raw model text.</p>
+    <div class="why compared"><b>Real recorded replacement:</b> it replaced a regex/keyword validator that
+      genuinely shipped first — and that a table function or <code>IDENTIFIER('RAW…')</code> could walk
+      straight past. The repo's 38 bypass tests were written against exactly those holes before the AST
+      version existed. <span class="srcnote">Source: sql_guard.py docstrings + tests/test_sql_guard.py — an
+      actual predecessor, not a strawman.</span></div>
+    <pre class="code">def validate(self, sql: str) -> str:
+    """
+    Vet `sql` and return a safe, canonical, row-capped statement
+    to execute. Raises QueryRejected (with a human-readable
+    reason) on any violation. Fails CLOSED: anything that does
+    not parse, or parses into a shape not explicitly permitted,
+    is rejected.
+    """
+    ...
+    statements = [s for s in sqlglot.parse(sql, read=self._dialect) if s is not None]</pre>
+    <div class="srcfile">fraud_platform/bi_dashboard/sql_guard.py — SQLValidator.validate</div>
+  </div>
+
+  <!-- DOCKER -->
+  <div class="tool" id="docker">
+    <div class="toolhead"><h2>Docker Compose</h2><span class="cat">local infrastructure</span></div>
+    <p class="role">Runs the whole substrate locally: Kafka (KRaft), Spark master/worker, Redis (with
+    <code>allkeys-lru</code> eviction), Weaviate (vectorizer disabled — embeddings are supplied by our own
+    code), and a Kafka UI. The hardening round pinned every image (one was <code>:latest</code>), added a
+    memory limit and healthcheck to the unpinned service, and left the reasoning in place as comments.</p>
+    <div class="why"><b>Why (as recorded):</b> reproducibility — the pinning commit records that a
+      <code>:latest</code> tag “makes the stack non-reproducible — a rebuild could silently pull a new UI.”
+      <span class="srcnote">No alternative to Docker Compose was compared in the repo or narrative.</span></div>
+    <pre class="code">kafka-ui:
+  <span class="cmt"># Pinned (Priority 5): was ':latest', which makes the stack</span>
+  <span class="cmt"># non-reproducible — a rebuild could silently pull a new UI.</span>
+  image: provectuslabs/kafka-ui:v0.7.2
+  deploy:
+    resources:
+      limits:
+        memory: 512m</pre>
+    <div class="srcfile">docker-compose.yml</div>
+  </div>
+
+  <div class="fidelity-inline">
+    <b>Fidelity note for this page.</b> Every snippet above is copied from the repository as it stands on this
+    branch (paths shown under each block); comment lines inside snippets are the code's own. Only two entries
+    carry a tool-vs-tool comparison from the design record — Weaviate/Pinecone and LangGraph/CrewAI, both from
+    PROJECT_NARRATIVE.md — plus two <em>replacements that actually happened in this repo's history</em>
+    (Snowpipe over row-by-row inserts; the AST guard over the regex guard). For everything else, no alternative
+    was recorded, and this page says so instead of inventing a comparison.
+  </div>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <a href="index.html">← Back to the process story</a> ·
+    <a href="architecture.html">Next: the agentic architecture deep dive →</a>
+  </div>
+</footer>
+</body>
+</html>
