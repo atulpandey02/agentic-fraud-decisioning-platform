@@ -1,3 +1,75 @@
+# Build Report — docs site, round 3: phases.html (what / tools / why / what-if-not, per phase)
+
+**Branch:** `docs/interactive-website` · **Date:** 2026-07-09 · **Status:** committed locally, NOT pushed (awaiting human review, as instructed)
+
+This section covers only round 3. No existing page was rewritten or regenerated: the only changes to
+`index.html`, `stack.html`, and `architecture.html` are one nav link each (plus one `id="divergence"`
+anchor attribute on architecture.html's existing table, added so Phase 4's go-deeper link can land on it —
+a 5-insertion/2-deletion total diff across all three, verified with `git diff`).
+
+## What was added
+
+### `docs/phases.html` (new, ~33 KB, self-contained, no JS)
+
+The whole project organized by phase, 1–7, every phase answering the **same four questions as separate
+labeled blocks** — WHAT (2–3 sentences), TOOLS (chips listing only that phase's tools), WHY THIS, NOT THAT
+(the recorded reasoning, quoted from where it was written), WHAT IF NOT (what the rejected alternative
+would have cost, only as far as the record supports).
+
+Phase-specific requirements met:
+
+- **Phase 3** carries three explicitly separated decisions: (1) the **ReAct vs Plan-and-Execute vs
+  Reflection** comparison quoted **in full** from PROJECT_NARRATIVE.md's "Design decisions" — the reasoning
+  that existed but never appeared on architecture.html; (2) **LangGraph vs CrewAI** (also quoted in full);
+  (3) the narrower **hand-built StateGraph vs `create_react_agent`** question (verbatim from agent.py's
+  header), labeled explicitly as the different question architecture.html answers. A fidelity note
+  discloses that the record contains no Reflection-specific critique beyond the shared
+  variable-tool-count rationale.
+- **Phase 4** states WHY a supervisor pattern was introduced at all — task decomposition into specialists
+  and structural enforcement of invariants (policy-before-decision: a prompt rule in Phase 3, structurally
+  impossible to violate in Phase 4) — quoting orchestrator.py's header verbatim (marked "reflowed from
+  comment lines"), plus the recorded fixed-pipeline vs pure-LLM-routing reasoning. The HOW-it-differs
+  material is linked to architecture.html's divergence table, not duplicated. A disclosure notes that no
+  standalone "Day 1 blueprint" document exists in the repo — the recorded framing lives in orchestrator.py
+  and PROJECT_STATUS.md, and the surviving Day-1 references in code are the AGENT_ROLE boundary (tools.py)
+  and the agent_name trace column (multi_agent/state.py).
+- **WHAT IF NOT** covers every genuinely recorded alternative: Weaviate vs Pinecone, LangGraph vs CrewAI,
+  ReAct vs Plan-and-Execute/Reflection, **A2A protocol declined**, **Factory pattern declined** (both
+  narrative bullets quoted in full, with a disclosure that the narrative does not date them to a phase),
+  plus the two recorded in-repo replacements (Snowpipe over row-by-row inserts; sqlglot AST guard over the
+  regex guard, with sql_guard.py's attack-string reasoning quoted verbatim). For Kafka, Spark, Redis,
+  Snowflake, the embedding model, Streamlit/Plotly, and the judge model, the page says plainly that no
+  alternative was recorded — consistent with stack.html's existing disclosures.
+- **Go deeper** links for Phase 3 (architecture.html#single, #replay) and Phase 4 (#multi, #divergence)
+  instead of re-explaining mechanics.
+
+### Nav wiring
+
+`Phases` link added to the nav of index.html, stack.html, and architecture.html; phases.html's own nav
+links all pages plus per-phase anchors 1–7.
+
+## Fidelity checks performed
+
+- All 7 blockquotes script-verified against their sources (PROJECT_NARRATIVE.md with markdown bold
+  stripped; orchestrator.py with comment markers stripped) — whitespace-normalized substring match, all
+  PASS. Both verbatim `pre` blocks (agent.py header, sql_guard.py excerpt) verified **line-by-line** against
+  the source files, PASS. Seven shorter quoted fragments (system-prompt rule, "arbiter of its own
+  trustworthiness", "rule citation, not a probability", Day-1 references, etc.) verified, all PASS.
+- HTML tag-balance PASS on all four pages; all go-deeper anchors exist in architecture.html; all
+  cross-page links resolve (scripted).
+- Live: page loads with 7 phase sections, each with exactly the four blocks in template order; Phase 3/4
+  are the only ones with go-deeper blocks; Phase 4 carries both fidelity disclosures; zero console errors;
+  index.html's widgets still respond and its nav gained exactly the Phases link. (Preview-tool caveat: the
+  screenshot capture rendered black frames when scrolled mid-page this session — a capture artifact, not a
+  page defect; DOM inspection at those scroll positions confirmed the correct elements, and top-of-page
+  screenshots render fully.)
+
+## Not done, per instructions
+
+- Not pushed to GitHub — stopped for human review.
+
+---
+
 # Build Report — docs site, round 2: tech stack + agentic architecture deep dive
 
 **Branch:** `docs/interactive-website` · **Date:** 2026-07-09 · **Status:** committed locally, NOT pushed (awaiting human review, as instructed)

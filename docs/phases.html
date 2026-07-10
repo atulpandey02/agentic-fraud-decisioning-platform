@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phases — what each phase does, with what tools, and why</title>
+<meta name="description" content="The fraud-decisioning platform organized by phase: what each phase does, the tools used in that phase, the recorded reasoning for the choices made, and what the rejected alternatives would have cost.">
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#131a23; --panel:#161f2a; --panel2:#1b2634;
+    --line:#2a3646; --ink:#dbe4ee; --ink-dim:#8fa0b3; --ink-faint:#5d6d80;
+    --accent:#5cc8a5; --accent2:#e8b04b; --danger:#e0685e; --info:#6aa9e8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important} }
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;font-size:16.5px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:.08em .35em;color:#c7d5e3}
+  h1,h2,h3{line-height:1.25;font-weight:650}
+  h2{font-size:1.4rem;margin:0}
+  h3{font-size:1rem;margin:0 0 .3rem}
+  .wrap{max-width:980px;margin:0 auto;padding:0 22px}
+  .kicker{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}
+  .dim{color:var(--ink-dim)}
+  .faint{color:var(--ink-faint)}
+  nav{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;gap:4px;align-items:center;overflow-x:auto;padding-top:10px;padding-bottom:10px}
+  nav .brand{font-family:var(--mono);font-size:.8rem;color:var(--ink-dim);margin-right:auto;white-space:nowrap}
+  nav a{font-size:.82rem;color:var(--ink-dim);padding:6px 10px;border-radius:6px;white-space:nowrap}
+  nav a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav a.here{color:var(--accent);background:var(--panel)}
+  nav a.pnum{font-family:var(--mono);font-size:.74rem;padding:6px 7px}
+  header.page{padding:64px 0 30px}
+  header.page h1{font-size:clamp(1.7rem,4vw,2.5rem);margin:.3rem 0 .8rem}
+  header.page p{color:var(--ink-dim);max-width:70ch}
+
+  .phase{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:22px 0;padding:22px 24px}
+  .phead{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+  .phead .pnum{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);border:1px solid var(--line);border-radius:99px;padding:3px 11px;white-space:nowrap}
+  .phead .status{margin-left:auto;font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;color:var(--ink-faint)}
+
+  .block{margin-top:16px;padding:14px 16px;background:var(--bg2);border-radius:8px;border-left:3px solid var(--line)}
+  .block p{margin:.4rem 0 0}
+  .block p:first-of-type{margin-top:.5rem}
+  .blabel{font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+  .block.what{border-left-color:var(--info)}       .block.what .blabel{color:var(--info)}
+  .block.tools{border-left-color:var(--ink-faint)}
+  .block.why{border-left-color:var(--accent2)}     .block.why .blabel{color:var(--accent2)}
+  .block.ifnot{border-left-color:var(--danger)}    .block.ifnot .blabel{color:var(--danger)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .chip{font-family:var(--mono);font-size:.75rem;background:var(--panel2);border:1px solid var(--line);border-radius:99px;padding:4px 12px;color:#c7d5e3;white-space:nowrap}
+
+  .decision{margin-top:12px}
+  .decision .dtitle{font-weight:650;color:var(--ink);font-size:.95rem}
+  blockquote.rec{margin:.6rem 0 0;padding:10px 14px;background:#0b0f14;border:1px solid var(--line);border-left:3px solid var(--accent2);border-radius:0 8px 8px 0;font-size:.92rem;color:var(--ink-dim)}
+  blockquote.rec .src{display:block;margin-top:8px;font-family:var(--mono);font-size:.68rem;color:var(--info);font-style:normal}
+  pre.code{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:.76rem;line-height:1.55;color:#c7d5e3;margin:10px 0 0;white-space:pre-wrap}
+  .srcfile{font-family:var(--mono);font-size:.7rem;color:var(--info);margin-top:4px}
+
+  .disc{margin-top:10px;font-size:.85rem;color:var(--ink-faint);font-family:var(--mono);font-size:.74rem;line-height:1.6}
+  .disc::before{content:"⚠ ";color:var(--accent2)}
+
+  .godeeper{margin-top:16px;padding:12px 16px;border:1px dashed var(--line);border-radius:8px;font-size:.9rem;color:var(--ink-dim)}
+  .godeeper b{color:var(--accent)}
+
+  .fidelity-inline{margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;font-size:.9rem;color:var(--ink-dim)}
+  .fidelity-inline b{color:var(--accent2)}
+  footer{border-top:1px solid var(--line);margin-top:56px;padding:32px 0 56px;font-size:.85rem;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+
+<nav aria-label="Site">
+  <div class="wrap">
+    <span class="brand">agentic-fraud-decisioning-platform / the process</span>
+    <a href="index.html">Story</a>
+    <a href="index.html#moments">Field Notes</a>
+    <a href="phases.html" class="here">Phases</a>
+    <a href="stack.html">Stack</a>
+    <a href="architecture.html">Architecture</a>
+    <a href="#p1" class="pnum">1</a><a href="#p2" class="pnum">2</a><a href="#p3" class="pnum">3</a><a href="#p4" class="pnum">4</a><a href="#p5" class="pnum">5</a><a href="#p6" class="pnum">6</a><a href="#p7" class="pnum">7</a>
+  </div>
+</nav>
+
+<header class="page">
+  <div class="wrap">
+    <div class="kicker">The project, phase by phase</div>
+    <h1>Seven phases — what, with what tools, why this and not that</h1>
+    <p>
+      Every phase gets the exact same four questions, answered separately and labeled — not buried in a
+      narrative: <b style="color:var(--info)">WHAT</b> it does,
+      <b>TOOLS</b> used in that phase specifically,
+      <b style="color:var(--accent2)">WHY THIS, NOT THAT</b> (the recorded reasoning, quoted from where it
+      was actually written down), and <b style="color:var(--danger)">WHAT IF NOT</b> (what the rejected
+      alternative would likely have cost — stated only where a real alternative was actually considered;
+      where none was recorded, that is said plainly). This page answers <em>what and why</em>;
+      <a href="architecture.html">the architecture page</a> answers <em>how, mechanically</em>.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ================= PHASE 1 ================= -->
+  <section class="phase" id="p1">
+    <div class="phead"><span class="pnum">Phase 1</span><h2>Streaming foundation + feature store</h2><span class="status">done · verified at ~1M rows</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>A synthetic transaction generator (10,000 users, SCD2 <code>DIM_USERS</code>, four injectable fraud
+      patterns, a 10M-row backfill mode) publishes to Kafka; a Spark Structured Streaming engine computes
+      per-transaction fraud features — amount z-score against the user's baseline, Haversine geo-distance
+      from Redis-held last-location state, new-device flag, 15-minute sliding-window velocity, and a
+      two-tier risk score (weighted signals plus hard-rule single-signal overrides). Features land in two
+      places: Redis as the online store (24-hour TTL) and S3 Parquet → Snowpipe → Snowflake
+      <code>FACT_FEATURE_SNAPSHOTS</code> as the audit record. Verified live: 999,878 rows, 443,805 flagged,
+      all flagged rows carrying ground truth.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">Apache Kafka (KRaft)</span><span class="chip">Spark Structured Streaming</span><span class="chip">Redis</span><span class="chip">S3 + Snowpipe</span><span class="chip">Snowflake</span><span class="chip">Docker Compose</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <p>The recorded reasoning in this phase is about <em>how</em> the tools are used, not which tools to
+      pick: <code>user_id</code> as the Kafka message key so per-user aggregation is shuffle-friendly;
+      event-time windows on <code>transaction_ts</code> rather than processing time; <code>foreachBatch</code>
+      as the sink because Spark has no native Redis or Snowflake streaming sink; two concurrent Spark queries
+      sharing one session and communicating via Redis; and the two-tier scoring design — weighted judgment
+      plus hard rules where a property must always hold (added Day 4, with its reasoning documented in the
+      engine).</p>
+      <p>One in-phase choice has a recorded before/after rather than a hypothetical: row-by-row
+      <code>executemany</code> INSERTs to Snowflake were the actual first implementation, and the repo
+      documents replacing them with the S3 Parquet + Snowpipe path (and, similarly, batching Redis reads
+      with <code>MGET</code> to fix an N+1). Details and code snippets are on
+      <a href="stack.html">the stack page</a>.</p>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>No alternative was recorded</b> for Kafka, Spark, Redis, or Snowflake themselves — they were the
+      starting assumptions, and <a href="stack.html">stack.html</a> already discloses this per tool. No
+      invented bake-off is offered here.</p>
+      <p>The one real, measured counterfactual inside this phase is the write path: the repo kept the
+      row-by-row <code>SnowflakeFeatureWriter</code> as a fallback after replacing it, so "what if not
+      Snowpipe" is answered by the code's own history — per-row round-trips to the warehouse on a streaming
+      workload, which is exactly what got replaced.</p>
+    </div>
+  </section>
+
+  <!-- ================= PHASE 2 ================= -->
+  <section class="phase" id="p2">
+    <div class="phead"><span class="pnum">Phase 2</span><h2>Retrieval / RAG layer</h2><span class="status">done · survived a container restart intact</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>A fraud-policy knowledge base the agents can search: 4 policy documents + 4 case studies (one per
+      fraud pattern, authored for retrieval — H1 = pattern name, H2 sections), chunked by a structure-aware
+      H2 chunker (with a documented prefix-overhead budget fix), embedded with all-MiniLM-L6-v2, and stored
+      in Weaviate as the <code>FraudPolicyChunk</code> collection with native hybrid (BM25 + vector) search
+      and an optional per-pattern filter.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">Weaviate</span><span class="chip">sentence-transformers (all-MiniLM-L6-v2)</span><span class="chip">custom H2 chunker</span><span class="chip">Docker Compose (persistent volume)</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <div class="decision">
+        <div class="dtitle">Weaviate over Pinecone — a real, verified comparison</div>
+        <blockquote class="rec">"<b>Weaviate over Pinecone</b> for the retrieval layer, after verifying (not
+          assuming) that Pinecone's free tier DID support hybrid search, but that Weaviate's score fusion was
+          native while Pinecone's needed manual rebalancing — a real, verified technical reason, not just a
+          hunch."
+          <span class="src">PROJECT_NARRATIVE.md · "Design decisions" · quoted in full</span></blockquote>
+        <p class="dim" style="font-size:.9rem">Note what the record does <em>not</em> claim: it does not say
+        Pinecone lacked hybrid search (it was verified to have it). The recorded difference is narrower —
+        native score fusion versus fusion the project would have had to rebalance by hand.</p>
+      </div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>Pinecone:</b> per the recorded comparison, hybrid keyword + vector ranking would have worked, but
+      the fusion of the two scores would have been a manually rebalanced knob the project owns and maintains,
+      instead of an engine-native feature. Nothing beyond that was recorded, so nothing beyond that is
+      claimed.</p>
+      <p><b>The embedding model:</b> no alternative to all-MiniLM-L6-v2 was recorded — said plainly rather
+      than invented.</p>
+    </div>
+  </section>
+
+  <!-- ================= PHASE 3 ================= -->
+  <section class="phase" id="p3">
+    <div class="phead"><span class="pnum">Phase 3</span><h2>Single ReAct agent</h2><span class="status">done · 2 verified end-to-end runs</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>One LLM agent that decides ALLOW / BLOCK / ESCALATE for a flagged transaction. It runs a ReAct loop
+      built as an explicit LangGraph <code>StateGraph</code>: the model reads the case, calls whichever of
+      its three tools it judges necessary (features, policy, user history), observes, repeats — capped at
+      <code>MAX_REASONING_STEPS = 8</code> — then a dedicated finalize step restates the conclusion as a
+      typed <code>DecisionOutput</code>. Verified twice end to end: BLOCK / GEO_JUMP / 0.9 and
+      ESCALATE / GEO_JUMP / 0.6, each in 4 Groq calls with all three tools firing.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">LangGraph (StateGraph · ToolNode · add_messages · MemorySaver)</span><span class="chip">Groq llama-3.3-70b-versatile</span><span class="chip">get_transaction_features → Redis</span><span class="chip">get_policy_context → Weaviate</span><span class="chip">get_user_history → Snowflake DIM</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <p class="dim" style="font-size:.9rem;margin-top:.5rem">Three distinct recorded decisions live in this
+      phase. They answer different questions and are easy to conflate — so here they are separately.</p>
+
+      <div class="decision">
+        <div class="dtitle">Decision 1 — the reasoning pattern: ReAct over Plan-and-Execute or Reflection</div>
+        <blockquote class="rec">"<b>ReAct over Plan-and-Execute or Reflection</b> for the single agent,
+          specifically because the number of tool calls needed genuinely varies per transaction (a clear-cut
+          case needs no history lookup; a borderline one needs all three tools) — Plan-and-Execute's fixed
+          pipeline can't adapt to that without wasting latency on easy cases."
+          <span class="src">PROJECT_NARRATIVE.md · "Design decisions" · quoted in full</span></blockquote>
+        <p class="dim" style="font-size:.9rem">This comparison exists in the narrative but never appeared
+        explicitly on the architecture page — it is a different question from Decision 3 below.
+        <span class="faint">Fidelity note: the record states the concrete failure mode for Plan-and-Execute
+        (fixed pipeline, wasted latency); for Reflection it records the rejection but no separate,
+        Reflection-specific critique beyond the same variable-tool-count rationale.</span></p>
+      </div>
+
+      <div class="decision">
+        <div class="dtitle">Decision 2 — the framework: LangGraph over CrewAI</div>
+        <blockquote class="rec">"<b>LangGraph over CrewAI</b>, specifically because of first-class support for
+          cycles (ReAct's repeated loop) and node-level human-in-the-loop interrupts (needed for the
+          governance/approval tiers) — not because CrewAI is worse, but because those two specific
+          requirements sit in LangGraph's strengths."
+          <span class="src">PROJECT_NARRATIVE.md · "Design decisions" · quoted in full</span></blockquote>
+      </div>
+
+      <div class="decision">
+        <div class="dtitle">Decision 3 — the construction: hand-built StateGraph over the <code>create_react_agent</code> prebuilt</div>
+        <p class="dim" style="font-size:.92rem">A narrower question than Decisions 1–2: having already chosen
+        the ReAct pattern and LangGraph, should the loop be assembled by hand or generated by the one-line
+        helper? The recorded answer, from the agent file's own header:</p>
+        <pre class="code"># Built with StateGraph directly rather than LangGraph's
+# create_react_agent prebuilt helper. create_react_agent would
+# build the exact same call_model &lt;-&gt; tools loop in one line —
+# using it here would hide the mechanics we specifically want
+# visible: how the conditional routing works, how the loop
+# terminates, how MAX_REASONING_STEPS prevents a runaway agent.</pre>
+        <div class="srcfile">fraud_platform/agents/single_agent/agent.py (verbatim)</div>
+        <p class="dim" style="font-size:.9rem">This is the decision <a href="architecture.html#single">architecture.html</a>
+        explains — it is <em>not</em> the ReAct-vs-Plan-and-Execute decision, which is why both appear here,
+        labeled apart.</p>
+      </div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>Plan-and-Execute:</b> the recorded downside is concrete — a fixed plan can't shrink for easy
+      cases, so every clear-cut transaction would pay the full tool budget in latency (and this system's
+      recorded runs really do vary: the supervisor's later verified runs used three tools on one transaction
+      and skipped the history fetch on another).</p>
+      <p><b>Reflection:</b> rejected in the same recorded sentence, but no Reflection-specific failure mode
+      was written down — disclosed rather than invented.</p>
+      <p><b>CrewAI:</b> per the record, not "worse" — but the two load-bearing requirements (a first-class
+      reasoning <em>cycle</em>, and node-level human-in-the-loop interrupts that Phase 5's approval tiers
+      would need) sit in LangGraph's strengths. Choosing CrewAI would have meant building this system's two
+      defining control-flow features against, rather than with, the framework's grain — that is the extent
+      of what the record supports.</p>
+      <p><b>create_react_agent:</b> the same loop in one line, with the mechanics this project specifically
+      wanted visible (routing, termination, the step cap) hidden inside the helper.</p>
+    </div>
+
+    <div class="godeeper"><b>Go deeper (the "how"):</b> the
+      <a href="architecture.html#single">clickable ReAct StateGraph</a> — every node loads its verbatim
+      function — and the <a href="architecture.html#replay">10-step trace replay</a> of the recorded
+      BLOCK/GEO_JUMP run, with each step labeled recorded / mechanics / not-recorded.</div>
+  </section>
+
+  <!-- ================= PHASE 4 ================= -->
+  <section class="phase" id="p4">
+    <div class="phead"><span class="pnum">Phase 4</span><h2>Multi-agent orchestrator (supervisor pattern)</h2><span class="status">done · 2 verified runs with different routing</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>The same decision job as Phase 3, restructured: an orchestrator node routes among four specialists —
+      <code>feature_agent</code>, <code>risk_agent</code>, <code>policy_agent</code>,
+      <code>decision_agent</code> — over a shared typed blackboard (<code>MultiAgentState</code>). The router
+      LLM chooses order and skips; code enforces the invariants. Verified with genuinely different routing:
+      a clear-cut case ran feature → policy → decision with <code>risk_agent</code> skipped (ALLOW at 0.8);
+      a borderline GEO_JUMP ran all four (ESCALATE at 0.6).</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">LangGraph (supervisor StateGraph)</span><span class="chip">Groq (structured-output router + 4 specialist calls)</span><span class="chip">Phase 3's three tools, constructor-injected</span><span class="chip">operator.add blackboard reducer</span></div>
+      <p class="dim" style="font-size:.88rem">Deliberately <em>no new</em> data-access tools: the specialists
+      reuse Phase 3's three tools — "the tools ARE the platform's data-access layer for agents; two copies
+      would drift" (orchestrator.py).</p>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <div class="decision">
+        <div class="dtitle">Why introduce a multi-agent supervisor at all — not just how it differs</div>
+        <p class="dim" style="font-size:.92rem">Two recorded reasons: <b style="color:var(--ink)">task
+        decomposition into specialists</b>, and <b style="color:var(--ink)">structural enforcement of
+        invariants</b> the single agent could only be <em>asked</em> to honor. In the orchestrator's own
+        words:</p>
+        <blockquote class="rec">"The single agent interleaved evidence-gathering and deciding inside one
+          conversation; one model juggled every concern with every tool. Here each concern is a SPECIALIST
+          with a focused prompt and exactly the tools it needs, and the model-driven judgment that remains is
+          ROUTING: which specialist runs next, and whether one can be skipped. That split is what makes the
+          system's reasoning inspectable per-concern (Phase 6 traces get an agent_name per step) and
+          extensible per-concern (a fifth specialist is a new node + one line in the router prompt, not a
+          rewrite of a monolithic prompt)."
+          <span class="src">fraud_platform/agents/multi_agent/orchestrator.py · header · verbatim (reflowed from comment lines)</span></blockquote>
+        <p class="dim" style="font-size:.92rem">The invariant that makes the point sharpest:
+        <em>policy-before-decision</em>. Phase 3 enforced it with a prompt line ("Always call
+        get_policy_context at least once before deciding") that the model could ignore; Phase 4's router
+        guardrail makes routing to <code>decision_agent</code> without prior policy grounding structurally
+        impossible — the code overrides the model's choice and logs the override.</p>
+      </div>
+
+      <div class="decision">
+        <div class="dtitle">Why LLM routing <em>with</em> code guardrails — not a fixed pipeline, not pure LLM routing</div>
+        <blockquote class="rec">"A fixed pipeline (feature -> risk -> policy -> decision, always) needs no LLM
+          router at all — but then clear-cut cases pay for a user-history fetch and an extra LLM call they
+          don't need, and the "orchestrator" is just a for-loop wearing a title. Pure LLM routing, by
+          contrast, can skip the policy grounding or ping-pong between specialists. So: the LLM chooses the
+          ORDER and the SKIPS (the judgment part), while code enforces the INVARIANTS (the correctness part)
+          — each specialist runs at most once, policy must run before a decision, and a hard step cap ends a
+          confused run."
+          <span class="src">fraud_platform/agents/multi_agent/orchestrator.py · header · verbatim (reflowed from comment lines)</span></blockquote>
+      </div>
+
+      <div class="disc">Fidelity disclosure: there is no standalone "Day 1 blueprint" document in the repo.
+      The recorded framing of when multi-agent beats single-agent lives in orchestrator.py's header docstring
+      (quoted above) and PROJECT_STATUS.md's Phase 4 notes. The Day-1 design decisions that do survive in
+      code references are the AGENT_ROLE access boundary (tools.py: "designed on Day 1") and the
+      per-step agent_name trace column (multi_agent/state.py: "designed for on Day 1").</div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>Fixed pipeline instead:</b> per the recorded reasoning above — clear-cut cases pay for a
+      user-history fetch and an extra LLM call they don't need. The verified runs show this is not
+      hypothetical: the clear-cut run really did skip <code>risk_agent</code>.</p>
+      <p><b>Pure LLM routing instead:</b> per the same record — the router could skip policy grounding or
+      ping-pong between specialists; the guardrail overrides exist precisely because the router was not
+      trusted to always honor the invariants.</p>
+      <p><b>A2A protocol (considered, declined):</b></p>
+      <blockquote class="rec">"<b>A2A protocol deliberately NOT adopted</b>, despite being a real, current
+        standard, because it solves cross-organization agent interoperability and every agent in this system
+        is internally owned, one team, one framework — there was no real problem for it to solve yet."
+        <span class="src">PROJECT_NARRATIVE.md · "Design decisions" · quoted in full</span></blockquote>
+      <p class="dim" style="font-size:.92rem">Adopting it would have added protocol machinery for a
+      cross-organization problem this system does not have.</p>
+      <p><b>Factory pattern (considered, declined):</b></p>
+      <blockquote class="rec">"<b>A Factory pattern deliberately NOT added</b>, for the same class of reason —
+        it only earns its place when there's a genuine branching decision about which class to instantiate,
+        and none existed at the time it was considered."
+        <span class="src">PROJECT_NARRATIVE.md · "Design decisions" · quoted in full</span></blockquote>
+      <div class="disc">The narrative records both declined decisions but does not date them to a phase; they
+      appear here because they are agent-system structure decisions, and Phase 4 is where that structure was
+      built.</div>
+    </div>
+
+    <div class="godeeper"><b>Go deeper (the "how"):</b> the
+      <a href="architecture.html#multi">clickable supervisor graph</a> with the verbatim
+      <code>_route</code> guardrails and the recorded 2026-07-06 run log, and the
+      <a href="architecture.html#divergence">8-row mechanical divergence table</a> — the how-it-differs
+      question is answered there and deliberately not duplicated here.</div>
+  </section>
+
+  <!-- ================= PHASE 5 ================= -->
+  <section class="phase" id="p5">
+    <div class="phead"><span class="pnum">Phase 5</span><h2>Governance / human-in-the-loop</h2><span class="status">done · first phase where decisions became durable</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>The agent decides <em>what</em> should happen (ALLOW / BLOCK / ESCALATE); governance decides
+      <em>how much autonomy</em> that decision gets. A deterministic framework maps (decision, confidence,
+      amount) → a tier — <code>AUTO_APPROVE</code>, <code>NOTIFY_ONLY</code>, or <code>SUGGEST</code> (the
+      human review queue) — and <code>HITLHandler</code>, the single owner of all
+      <code>FACT_DECISIONS</code> writes, persists each decision born-complete with its tier. Human verdicts
+      (CONFIRMED / OVERRIDDEN / ESCALATED) accumulate as free labeled eval data for Phase 6.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">Pure Python rules — deliberately no LLM</span><span class="chip">Snowflake (DECISIONS schema)</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <div class="decision">
+        <div class="dtitle">Deterministic code over another LLM call — a real, recorded rejection</div>
+        <p class="dim" style="font-size:.92rem">The recorded reasoning (PROJECT_STATUS.md, Phase 5): the two
+        judgments are deliberately separated — "the agent should not be the arbiter of its own
+        trustworthiness" — and the autonomy rules are deterministic code, not another LLM call, "because
+        'why did this auto-execute?' must be answerable with a rule citation, not a probability."</p>
+        <p class="dim" style="font-size:.92rem">The tier boundaries themselves reason from recorded
+        asymmetric error costs: a false ALLOW is unrecoverable money (so silent auto-approval is capped by
+        amount), a false BLOCK is a recoverable inconvenience (so it executes but is always surfaced), and
+        human attention is the scarce resource (so the SUGGEST queue holds only escalations and
+        low-confidence calls).</p>
+      </div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>An LLM assigning autonomy tiers:</b> the recorded objection is exact — the audit answer to "why
+      did this auto-execute?" becomes a probability instead of a rule citation. And letting the deciding
+      agent grade its own trustworthiness is the specific conflict of interest the recorded design forbids.</p>
+      <p><b>No other alternative was recorded</b> for this phase (e.g. no external workflow engine was
+      compared) — said plainly.</p>
+    </div>
+  </section>
+
+  <!-- ================= PHASE 6 ================= -->
+  <section class="phase" id="p6">
+    <div class="phead"><span class="pnum">Phase 6</span><h2>Observability + evaluation</h2><span class="status">done · first honest scorecard: 6 transactions</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>Two things: a durable reasoning trace, and a measurement loop. <code>AgentTraceWriter</code> persists
+      every step of every decision to <code>FACT_AGENT_TRACES</code> (INPUT → HANDOFF → REASONING → …, with
+      per-step <code>agent_name</code>); the eval runner executes the full stack (orchestrate → tier →
+      persist → trace) over a stratified half-fraud/half-legit sample and scores two orthogonal things:
+      outcome accuracy against synthetic ground truth (ESCALATE deliberately scores NULL) and reasoning
+      quality via an LLM judge. First batch: 6 transactions — decision accuracy 3/4 excluding escalations,
+      escalation rate 2/6, pattern identification 2/6, mean judge score 0.88.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">Snowflake (FACT_AGENT_TRACES · VARIANT)</span><span class="chip">Groq LLM judge (temp 0)</span><span class="chip">LangSmith (optional, env-gated)</span><span class="chip">stratified sampler</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <div class="decision">
+        <div class="dtitle">Own the compliance record; rent the dev telemetry</div>
+        <p class="dim" style="font-size:.92rem">Recorded division of labor: <code>FACT_AGENT_TRACES</code> is
+        the <em>owned</em> compliance record ("who decided and why", queryable next to the decisions);
+        LangSmith is <em>vendor</em> dev-telemetry ("why was that prompt slow/wrong"), enabled by env var and
+        a graceful no-op without an API key. Not either/or — both, with an explicit boundary.</p>
+      </div>
+      <div class="decision">
+        <div class="dtitle">Why an LLM judge here, when Phase 5 refused one</div>
+        <p class="dim" style="font-size:.92rem">Recorded as a deliberate mirror image: governance chose
+        rules-not-LLM because autonomy must be citable; evaluation chooses an LLM judge because grading
+        free-text reasoning for groundedness/consistency/completeness "is exactly what rules can't do." The
+        judge is same-model-family as the agents, with the self-preference caveat documented rather than
+        hidden.</p>
+      </div>
+      <div class="decision">
+        <div class="dtitle">Two scoring rules with recorded reasoning</div>
+        <p class="dim" style="font-size:.92rem"><b style="color:var(--ink)">ESCALATE scores NULL:</b> a
+        deferral is neither right nor wrong — scoring it correct would let always-escalate game accuracy;
+        scoring it wrong would punish calibrated humility. Escalation <em>rate</em> is reported as its own
+        number instead. <b style="color:var(--ink)">Sampling is stratified</b> half-fraud/half-legit: an
+        unstratified draw from the flagged pool (~2:1 legit, thanks to the hard-rule over-flagging) would
+        mostly test false-positive handling and give almost no recall signal.</p>
+      </div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>Unstratified sampling:</b> per the recorded reasoning — a mostly-legit sample, so the eval would
+      barely measure recall at all. (This is the same failure family as the "precision 1.0" incident on
+      <a href="index.html#moments">the story page</a>: a metric computed on a sample that can't express the
+      error you care about.)</p>
+      <p><b>Scoring escalations as right or wrong:</b> per the record — either direction teaches the wrong
+      lesson (gamed accuracy, or punished humility).</p>
+      <p><b>LangSmith as the only trace store:</b> the compliance record — the thing that must sit queryable
+      next to the decisions — would live in a vendor. That is the recorded boundary, not a recorded
+      catastrophe claim.</p>
+      <p><b>Judge model choice:</b> no alternative judge model was recorded — only the same-family
+      self-preference caveat. Said plainly.</p>
+      <p class="faint" style="font-size:.85rem">Honest caveat, preserved from the narrative: sample sizes have
+      been small (as few as 6 transactions); real statistical confidence has NOT been established.</p>
+    </div>
+  </section>
+
+  <!-- ================= PHASE 7 ================= -->
+  <section class="phase" id="p7">
+    <div class="phead"><span class="pnum">Phase 7</span><h2>Agentic BI dashboard (NL2SQL)</h2><span class="status">done · guardrails verified fail-closed, 4/4</span></div>
+
+    <div class="block what"><span class="blabel">What</span>
+      <p>Natural-language analytics over the decision log: an English question becomes one Groq call
+      producing structured <code>{sql, explanation, chart_hint}</code>; a code validator checks the SQL;
+      only then does it execute against Snowflake, with a chart renderer that lets the LLM's hint propose and
+      the actual result shape dispose. The generated SQL is always shown, expanded — an analyst who can't see
+      the SQL can't catch a subtly-wrong query. Verified live: real questions returned true numbers from the
+      persisted decisions, and all four hostile probes (DROP, a RAW.* read, semicolon smuggling, UPDATE) were
+      rejected.</p>
+    </div>
+
+    <div class="block tools"><span class="blabel">Tools in this phase</span>
+      <div class="chips"><span class="chip">Groq (NL→SQL, one call)</span><span class="chip">sqlglot (AST validator)</span><span class="chip">Streamlit</span><span class="chip">Plotly</span><span class="chip">Snowflake</span></div>
+    </div>
+
+    <div class="block why"><span class="blabel">Why this, not that</span>
+      <div class="decision">
+        <div class="dtitle">The trust model: the LLM is an untrusted SQL author</div>
+        <p class="dim" style="font-size:.92rem">Recorded explicitly: the prompt asks for good behavior (a
+        quality measure); the validator enforces it (the security boundary) — only the validator is
+        load-bearing. The table allowlist (only <code>FACT_DECISIONS</code> +
+        <code>FACT_FEATURE_SNAPSHOTS</code>; <code>RAW.*</code> absent) <em>is</em> the PII boundary. Same
+        judgment-from-models, invariants-from-code split as the Phase 4 router and Phase 5 rules.</p>
+      </div>
+      <div class="decision">
+        <div class="dtitle">AST validation (sqlglot) over the original regex guard — a recorded replacement</div>
+        <pre class="code"># Why AST, not regex — the concrete failure of the old approach:
+#   A regex denylist of keywords is a blocklist, and blocklists
+#   lose. `SELECT ... FROM IDENTIFIER('RAW.FACT_TRANSACTIONS')`
+#   reaches the PII table with no forbidden keyword in sight;
+#   `SELECT ... UNION SELECT ... FROM RAW...` hides the exfil in a
+#   second branch; a table function `TABLE(FLATTEN(...))` is a data
+#   source the keyword scan never modeled.</pre>
+        <div class="srcfile">fraud_platform/bi_dashboard/sql_guard.py (verbatim excerpt)</div>
+        <p class="dim" style="font-size:.92rem">The guard validates what the query <em>is</em> (an allowlist
+        over parsed structure), not what strings it contains — and executes the re-serialized AST, so comment
+        tricks and unicode lookalikes are normalized away before Snowflake ever sees the query.</p>
+      </div>
+      <div class="decision">
+        <div class="dtitle">Smaller recorded choices</div>
+        <p class="dim" style="font-size:.92rem">Chart hint proposes, result shape disposes (code can veto down
+        to table/metric, never erroring on odd shapes); DataFrames built manually instead of
+        <code>fetch_pandas_all()</code> to avoid the connector↔pyarrow version coupling (pyarrow already
+        pinned by Phase 1's Parquet writer).</p>
+      </div>
+    </div>
+
+    <div class="block ifnot"><span class="blabel">What if not</span>
+      <p><b>Keeping the regex guard:</b> this is the rare counterfactual the repo spells out with attack
+      strings — <code>IDENTIFIER()</code> indirection, a <code>UNION</code> branch, table functions — each a
+      way to reach PII with no forbidden keyword present. The regex guard is not hypothetical either: it was
+      the actual first implementation, and sql_guard.py records replacing it.</p>
+      <p><b>Trusting the LLM's SQL outright:</b> the four verified probes answer this empirically — without
+      the validator, a <code>DROP</code>, a <code>RAW.*</code> read past the PII boundary, a smuggled second
+      statement, and an <code>UPDATE</code> would all have reached the warehouse.</p>
+      <p><b>Streamlit / Plotly:</b> no alternative UI or charting stack was recorded — said plainly.</p>
+    </div>
+  </section>
+
+  <!-- ================= FIDELITY ================= -->
+  <div class="fidelity-inline">
+    <b>Fidelity note for this page.</b> Every WHAT block was cross-checked against PROJECT_STATUS.md's
+    phase-by-phase record and its verified numbers; every quoted WHY comes from where it was actually written
+    down (PROJECT_NARRATIVE.md's "Design decisions" quoted in full, or the named source file, quoted
+    verbatim — code-comment quotes are marked "reflowed" where comment line breaks were joined). WHAT IF NOT
+    is stated only as far as the record supports it: five decisions had real recorded alternatives
+    (Weaviate vs Pinecone, LangGraph vs CrewAI, ReAct vs Plan-and-Execute/Reflection, A2A declined, Factory
+    declined) plus two recorded in-repo replacements (Snowpipe over row-by-row inserts, sqlglot over regex);
+    everywhere else the absence of a recorded alternative is disclosed instead of papered over. Known gaps
+    are flagged inline: no Reflection-specific critique was recorded, no standalone Day-1 blueprint document
+    exists in the repo, and the A2A/Factory decisions are not dated to a phase.
+  </div>
+
+  <footer>
+    <a href="index.html">The process story</a> ·
+    <a href="stack.html">Tech stack</a> ·
+    <a href="architecture.html">Architecture deep dive</a>
+    <div style="margin-top:8px">Built from PROJECT_STATUS.md, PROJECT_NARRATIVE.md, and the repo's own
+    docstrings — nothing invented, gaps disclosed.</div>
+  </footer>
+
+</div>
+</body>
+</html>
