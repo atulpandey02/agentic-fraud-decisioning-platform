@@ -1009,13 +1009,31 @@ if __name__ == "__main__":
         "--days", type=int, default=BACKFILL_DAYS_BACK,
         help="Days of history to spread backfill across"
     )
+    parser.add_argument(
+        "--bursts", type=int, default=None,
+        help="Number of VELOCITY_SPIKE bursts. Default scales with --num so a "
+             "small backfill isn't swamped by bursts (which would otherwise "
+             "produce nearly all-fraud data)."
+    )
     args = parser.parse_args()
+
+    # Scale bursts to --num by default. BACKFILL_NUM_BURSTS is tuned for the
+    # full BACKFILL_NUM_TRANSACTIONS run; using it verbatim on a small --num
+    # lets bursts (~9 txns each) consume the entire budget and crowd out every
+    # normal transaction — a 25K backfill with the default 3000 bursts came out
+    # 100% fraud. Proportional scaling keeps the burst fraction constant, and
+    # yields exactly BACKFILL_NUM_BURSTS at the full default --num.
+    if args.bursts is not None:
+        num_bursts = args.bursts
+    else:
+        num_bursts = max(1, round(args.num * BACKFILL_NUM_BURSTS / BACKFILL_NUM_TRANSACTIONS))
 
     with TransactionStreamGenerator() as generator:
         if args.backfill:
             generator.run_backfill(
                 num_transactions=args.num,
                 days_back=args.days,
+                num_bursts=num_bursts,
             )
         else:
             generator.run()

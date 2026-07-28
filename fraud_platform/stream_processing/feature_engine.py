@@ -192,6 +192,14 @@ class FeatureEngineConfig:
     SNOWFLAKE_WAREHOUSE = os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")
     SNOWFLAKE_ROLE      = os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN")
 
+    # Feature write path. Default "snowpipe": buffer Parquet to S3, let
+    # Snowpipe AUTO_INGEST load it (the production path). "direct": write
+    # each micro-batch straight to FACT_FEATURE_SNAPSHOTS via the
+    # SnowflakeFeatureWriter (executemany) — slower, but needs no Snowpipe
+    # pipe/stage/integration. Used when those objects don't exist on the
+    # target account (e.g. a fresh account with no Snowpipe wired up).
+    FEATURE_WRITE_MODE  = os.getenv("FEATURE_WRITE_MODE", "snowpipe").strip().lower()
+
     @classmethod
     def for_testing(cls) -> "FeatureEngineConfig":
         """
@@ -1203,6 +1211,10 @@ class FraudFeatureEngine:
         # the instance for test_connection() / manual use; it just isn't
         # part of the hot write path.
         s3_writer = self._s3_writer
+        # Direct-write fallback (config.FEATURE_WRITE_MODE == "direct"):
+        # used when Snowpipe isn't wired on the target account.
+        sf_writer = self._sf_writer
+        write_mode = self._config.FEATURE_WRITE_MODE
         user_baselines = self._user_baselines
         trusted_devices = self._trusted_devices
         config = self._config
@@ -1330,9 +1342,17 @@ class FraudFeatureEngine:
             # underlying behavior is completely different (buffer,
             # don't write yet). This is what polymorphism buys us:
             # the caller doesn't need to know each sink's own naming.
-            s3_writer.write_batch(sf_rows)
-            if s3_writer.should_flush():
-                s3_writer.flush()
+            if write_mode == "direct":
+                # Direct-to-Snowflake path: no Snowpipe pipe/stage/integration
+                # required. Each micro-batch is inserted straight into
+                # FACT_FEATURE_SNAPSHOTS via executemany. Slower than the
+                # S3->Snowpipe bulk path, but self-contained — the only
+                # option on an account where Snowpipe isn't wired up.
+                sf_writer.write_batch(sf_rows)
+            else:
+                s3_writer.write_batch(sf_rows)
+                if s3_writer.should_flush():
+                    s3_writer.flush()
 
             flagged = sum(1 for f in features_list if f["is_flagged_for_review"])
             logger.info(

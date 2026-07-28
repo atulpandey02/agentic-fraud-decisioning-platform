@@ -65,8 +65,15 @@ GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.DECISIONS TO ROLE BI_ROLE;
 GRANT SELECT ON ALL TABLES IN SCHEMA FRAUD_DETECTION.FEATURES TO ROLE BI_ROLE;
 
 -- Warehouse USAGE for the least-privilege roles (account-agnostic).
+-- All three application roles run real queries under least privilege, so
+-- each needs warehouse USAGE. PIPELINE_ROLE is easy to miss because its
+-- startup probe is a bare COUNT(*) that Snowflake serves from metadata
+-- without a warehouse — but its actual DIM/RAW/FEATURES writes are DML and
+-- fail with "no active warehouse" without this grant (found on a fresh
+-- account rebuild, 2026-07-27).
 GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE BI_ROLE;
 GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE AGENT_ROLE;
+GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE PIPELINE_ROLE;
 
 -- NOTE: granting these roles to a specific USER is account-specific and
 -- deliberately NOT in this shared baseline (it used to hardcode one

@@ -57,8 +57,14 @@ docker compose down           # stop (add -v to also drop volumes)
 
 ### Database migrations
 ```bash
-# fresh database: run the baseline once, then incremental migrations
-#   (apply snowflake/schema.sql in a Snowflake worksheet as the baseline)
+# Fresh account/database — run these THREE in order (the order matters):
+#   1. snowflake/schema.sql   baseline: DB + schemas + base tables (run once)
+#   2. snowflake/rbac.sql     roles + grants — MUST run before step 3, because
+#                             migrations V002/V004 grant privileges to these
+#                             roles and fail if the roles don't exist yet
+#      (then snowflake/rbac_local_example.sql to grant the roles to your user)
+#   3. fraud-migrate          incremental VNNN__*.sql (idempotent)
+# Apply 1 and 2 as ACCOUNTADMIN in a Snowflake worksheet (or via the connector).
 fraud-migrate --dry-run       # show pending migrations, apply nothing
 fraud-migrate                 # apply pending VNNN__*.sql, idempotently
 # equivalently: python -m fraud_platform.db.migrate
