@@ -13,6 +13,11 @@
 # checks the schema against db/schema_contract.py, and by the
 # migrations being small and reviewable.
 #
+# ORDER on a fresh account: schema.sql -> rbac.sql -> this runner.
+# rbac.sql must precede the migrations because V002/V004 GRANT
+# privileges to PIPELINE_ROLE/AGENT_ROLE/BI_ROLE and fail with
+# "Role does not exist" if those roles haven't been created yet.
+#
 # Split into pure functions (discover / pending — unit-tested with
 # no database) and the I/O apply step (verified live), so the part
 # that decides WHAT to run is testable without credentials.
