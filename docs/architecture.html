@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic Architecture Deep Dive — how the LangGraph agents actually work</title>
+<meta name="description" content="LangGraph primer, the real ReAct StateGraph with clickable nodes, a step-by-step trace replay of a recorded run, and the supervisor-pattern multi-agent orchestrator — all built from the actual code.">
+<style>
+  :root{
+    --bg:#0d1117; --bg2:#131a23; --panel:#161f2a; --panel2:#1b2634;
+    --line:#2a3646; --ink:#dbe4ee; --ink-dim:#8fa0b3; --ink-faint:#5d6d80;
+    --accent:#5cc8a5; --accent2:#e8b04b; --danger:#e0685e; --info:#6aa9e8;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} *{transition:none!important} }
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.65;font-size:16.5px}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:var(--mono);font-size:.86em;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:.08em .35em;color:#c7d5e3}
+  h1,h2,h3,h4{line-height:1.25;font-weight:650}
+  h2{font-size:1.6rem;margin:.2rem 0 .4rem}
+  h3{font-size:1.15rem;margin:1.4rem 0 .3rem}
+  .wrap{max-width:1020px;margin:0 auto;padding:0 22px}
+  .kicker{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}
+  .dim{color:var(--ink-dim)}
+  .faint{color:var(--ink-faint)}
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  nav{position:sticky;top:0;z-index:50;background:rgba(13,17,23,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;gap:4px;align-items:center;overflow-x:auto;padding-top:10px;padding-bottom:10px}
+  nav .brand{font-family:var(--mono);font-size:.8rem;color:var(--ink-dim);margin-right:auto;white-space:nowrap}
+  nav a{font-size:.82rem;color:var(--ink-dim);padding:6px 10px;border-radius:6px;white-space:nowrap}
+  nav a:hover{color:var(--ink);text-decoration:none;background:var(--panel)}
+  nav a.here{color:var(--accent);background:var(--panel)}
+  header.page{padding:64px 0 26px}
+  header.page h1{font-size:clamp(1.7rem,4vw,2.5rem);margin:.3rem 0 .8rem}
+  header.page p{color:var(--ink-dim);max-width:68ch}
+
+  pre.code{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.78rem;line-height:1.55;color:#c7d5e3;margin:12px 0 4px;white-space:pre}
+  .srcfile{font-family:var(--mono);font-size:.7rem;color:var(--info);margin:2px 0 10px}
+
+  /* primer cards */
+  .primer{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:18px}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;font-size:.92rem}
+  .pcard h4{margin:0 0 .3rem;color:var(--accent)}
+  .pcard p{margin:.3rem 0;color:var(--ink-dim)}
+  .pcard .inthis{margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:.82rem}
+  .pcard .inthis b{color:var(--accent2);font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:2px}
+
+  /* diagram + code panel */
+  .diagram-wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-top:18px}
+  svg.graph{width:100%;height:auto;background:var(--bg2);border:1px solid var(--line);border-radius:12px}
+  svg.graph .gnode{cursor:pointer}
+  svg.graph .gnode rect,svg.graph .gnode ellipse{fill:var(--panel2);stroke:var(--line);stroke-width:1.5}
+  svg.graph .gnode:hover rect,svg.graph .gnode:hover ellipse{stroke:var(--accent)}
+  svg.graph .gnode.active rect,svg.graph .gnode.active ellipse{stroke:var(--accent);stroke-width:2.5;fill:#17352b}
+  svg.graph .gnode.pulse rect,svg.graph .gnode.pulse ellipse{stroke:var(--accent2);stroke-width:2.5;fill:#33290f}
+  svg.graph text{fill:var(--ink);font-family:var(--mono);font-size:12.5px;pointer-events:none}
+  svg.graph text.lbl{fill:var(--ink-faint);font-size:10.5px}
+  svg.graph path.edge{stroke:var(--ink-faint);stroke-width:1.5;fill:none;marker-end:url(#arr)}
+  svg.graph path.edge.cond{stroke-dasharray:5 4;stroke:var(--accent2)}
+  .codepanel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;min-height:120px}
+  .codepanel h4{margin:0 0 .2rem;color:var(--accent);font-family:var(--mono);font-size:.9rem}
+  .codepanel .desc{font-size:.9rem;color:var(--ink-dim);margin:.3rem 0 .4rem}
+  .hintbar{font-size:.78rem;color:var(--ink-faint);font-family:var(--mono);margin-top:6px}
+
+  /* replay */
+  .replay{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-top:22px}
+  .replay .rhead{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .replay .rhead h3{margin:0}
+  .replay .controls{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .replay button{all:unset;cursor:pointer;font-family:var(--mono);font-size:.82rem;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 16px;color:var(--ink)}
+  .replay button:hover{border-color:var(--accent)}
+  .replay button:disabled{opacity:.35;cursor:default}
+  .replay button.primary{background:var(--accent);color:#08110d;border-color:var(--accent)}
+  .replay .prog{font-family:var(--mono);font-size:.78rem;color:var(--ink-faint)}
+  .rstep{margin-top:14px}
+  .rstep .rphase{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent2)}
+  .rstep h4{margin:.2rem 0 .4rem;font-size:1.05rem}
+  .rstep .rdesc{font-size:.93rem;color:var(--ink-dim)}
+  .artifact{margin-top:12px}
+  .artifact .alabel{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:4px}
+  .tag{display:inline-block;padding:2px 10px;border-radius:99px;font-family:var(--mono);font-size:.7rem;margin:2px 4px 2px 0}
+  .tag.rec{background:rgba(92,200,165,.14);color:var(--accent)}
+  .tag.unrec{background:rgba(224,104,94,.14);color:var(--danger)}
+  .tag.mech{background:rgba(106,169,232,.14);color:var(--info)}
+  .recbox{margin-top:10px;padding:10px 14px;border-radius:0 8px 8px 0;font-size:.88rem}
+  .recbox.rec{background:var(--bg2);border-left:3px solid var(--accent)}
+  .recbox.unrec{background:var(--bg2);border-left:3px solid var(--danger);color:var(--ink-dim)}
+
+  /* divergence table */
+  table.divergence{width:100%;border-collapse:collapse;margin-top:16px;font-size:.88rem}
+  table.divergence th,table.divergence td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  table.divergence th{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+  table.divergence td:first-child{color:var(--accent2);font-weight:600;white-space:nowrap}
+  table.divergence td{color:var(--ink-dim)}
+  table.divergence td b{color:var(--ink)}
+
+  /* multi replay log */
+  .runlog{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:12px;font-family:var(--mono);font-size:.78rem;line-height:1.7}
+  .runlog .who{color:var(--accent2)}
+  .runlog .who.spec{color:var(--info)}
+  .runlog .quote{color:#c7d5e3}
+  .runlog .meta{color:var(--ink-faint)}
+
+  .fidelity-inline{margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;font-size:.9rem;color:var(--ink-dim)}
+  .fidelity-inline b{color:var(--accent2)}
+  .fidelity-inline li{margin:8px 0}
+  footer{border-top:1px solid var(--line);margin-top:40px;padding:32px 0 56px;font-size:.85rem;color:var(--ink-faint)}
+</style>
+</head>
+<body>
+
+<nav aria-label="Site">
+  <div class="wrap">
+    <span class="brand">agentic-fraud-decisioning-platform / the process</span>
+    <a href="index.html">Story</a>
+    <a href="index.html#moments">Field Notes</a>
+    <a href="phases.html">Phases</a>
+    <a href="stack.html">Stack</a>
+    <a href="architecture.html" class="here">Architecture</a>
+    <a href="#primer">Primer</a>
+    <a href="#single">ReAct Graph</a>
+    <a href="#replay">Trace Replay</a>
+    <a href="#multi">Supervisor</a>
+  </div>
+</nav>
+
+<header class="page">
+  <div class="wrap">
+    <div class="kicker">The machinery, not the mythology</div>
+    <h1>Agentic architecture deep dive: how these LangGraph agents actually work</h1>
+    <p>
+      Everything on this page is built from the real code on this branch — the graphs are drawn from
+      <code>_build_graph()</code>, the clickable nodes show the verbatim functions behind them, and the
+      trace replay walks a <em>recorded</em> run, labeling precisely which parts were recorded and which
+      the record doesn't capture. Concepts first, then this system's two architectures.
+    </p>
+  </div>
+</header>
+
+<section id="primer">
+  <div class="wrap">
+    <div class="kicker">Part A · Concepts</div>
+    <h2>How LangGraph works — the four ideas everything else builds on</h2>
+    <p class="dim">These transfer to any LangGraph system. Each card ends with where the concept shows up in <em>this</em> repo.</p>
+    <div class="primer">
+      <div class="pcard">
+        <h4>1 · Nodes</h4>
+        <p>A node is just a function: it receives the current state and returns a <em>partial update</em> —
+        only the keys it wants to change. Nodes can call an LLM, run a tool, or be pure Python; the graph
+        doesn't care.</p>
+        <div class="inthis"><b>In this repo</b><code>_call_model</code>, <code>ToolNode(ALL_TOOLS)</code> and
+        <code>_finalize</code> in the single agent; <code>_route</code> plus four <code>specialist.run</code>
+        methods in the orchestrator.</div>
+      </div>
+      <div class="pcard">
+        <h4>2 · Edges</h4>
+        <p>Edges say what runs next. A plain edge is unconditional. Because edges can point <em>backwards</em>,
+        a graph can express a loop — which is exactly what a ReAct agent is: reason → act → observe →
+        reason again.</p>
+        <div class="inthis"><b>In this repo</b><code>graph.add_edge("tools", "agent")</code> — the single line
+        that turns a pipeline into a ReAct <em>cycle</em>. (Per the narrative, first-class cycles were one of
+        the two reasons LangGraph was chosen over CrewAI.)</div>
+      </div>
+      <div class="pcard">
+        <h4>3 · Conditional edges</h4>
+        <p>A router function inspects the state and returns the <em>name</em> of the next node. This is where
+        control-flow decisions live — and it's ordinary code, so you can put hard guarantees here that no
+        prompt can bypass.</p>
+        <div class="inthis"><b>In this repo</b><code>_should_continue</code> (tools or finalize? plus the
+        MAX_REASONING_STEPS cap) and the orchestrator's
+        <code>lambda state: state["next_agent"]</code>, which just reads the choice <code>_route</code>
+        already recorded.</div>
+      </div>
+      <div class="pcard">
+        <h4>4 · State + reducers</h4>
+        <p>State is a TypedDict threaded through every node. When a node returns an update, each field is
+        merged using its <em>reducer</em>. Default: overwrite. <code>Annotated[list, add_messages]</code>
+        makes message updates <em>append</em> — that's how conversation history accumulates across loop
+        iterations instead of being replaced.</p>
+        <div class="inthis"><b>In this repo</b><code>messages: Annotated[list[BaseMessage], add_messages]</code>
+        in both states; the orchestrator adds a second reducer, <code>agents_invoked:
+        Annotated[list, operator.add]</code>, so every specialist appends its own name.</div>
+      </div>
+    </div>
+
+    <h3>The state definition, verbatim</h3>
+    <p class="dim">The single agent's state — note the design decision recorded in its own docstring: the
+    messages list <em>is</em> the audit trail, and it maps field-for-field onto the Snowflake trace table.</p>
+    <pre class="code" id="stateCode"></pre>
+    <div class="srcfile">fraud_platform/agents/single_agent/state.py</div>
+  </div>
+</section>
+
+<section id="single">
+  <div class="wrap">
+    <div class="kicker">Part B · The single agent (Phase 3)</div>
+    <h2>The actual ReAct StateGraph — click any node</h2>
+    <p class="dim">
+      Drawn from <code>FraudDecisioningAgent._build_graph()</code>. This graph was built with
+      <code>StateGraph</code> directly instead of the <code>create_react_agent</code> prebuilt — the file's
+      own header explains why: the prebuilt would produce the same loop in one line but hide the mechanics
+      (conditional routing, loop termination, the runaway-agent cap) that this project specifically wanted
+      visible. Solid arrows are unconditional edges; the dashed amber arrows are the two outcomes of the
+      conditional edge.
+    </p>
+
+    <div class="diagram-wrap">
+      <svg class="graph" viewBox="0 0 760 320" role="img" aria-label="Single agent StateGraph: START to agent; conditional to tools (looping back to agent) or finalize; finalize to END" id="singleSvg">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5d6d80"></path>
+          </marker>
+        </defs>
+        <!-- edges -->
+        <path class="edge" d="M96,160 L166,160"></path>
+        <path class="edge" d="M300,160 L360,160"></path>
+        <path class="edge cond" d="M432,142 C470,100 500,84 540,74"></path>
+        <path class="edge cond" d="M432,178 C470,220 500,236 540,246"></path>
+        <path class="edge" d="M560,52 C420,-14 260,52 240,122"></path>
+        <path class="edge" d="M660,262 L688,272"></path>
+        <text class="lbl" x="452" y="92">tool_calls present</text>
+        <text class="lbl" x="440" y="230">no tool calls, or cap hit</text>
+        <text class="lbl" x="330" y="34">tools → agent (the ReAct loop)</text>
+        <!-- nodes -->
+        <g class="gnode" data-node="start"><ellipse cx="62" cy="160" rx="34" ry="20"></ellipse><text x="42" y="164">START</text></g>
+        <g class="gnode" data-node="agent"><rect x="166" y="130" width="134" height="60" rx="10"></rect><text x="204" y="156">agent</text><text class="lbl" x="180" y="174">_call_model</text></g>
+        <g class="gnode" data-node="cond"><rect x="360" y="134" width="72" height="52" rx="26" transform="rotate(0)"></rect><text class="lbl" x="366" y="156">_should_</text><text class="lbl" x="366" y="170">continue</text></g>
+        <g class="gnode" data-node="tools"><rect x="540" y="44" width="140" height="58" rx="10"></rect><text x="580" y="70">tools</text><text class="lbl" x="552" y="88">ToolNode(ALL_TOOLS)</text></g>
+        <g class="gnode" data-node="finalize"><rect x="540" y="216" width="120" height="58" rx="10"></rect><text x="565" y="242">finalize</text><text class="lbl" x="558" y="260">_finalize</text></g>
+        <g class="gnode" data-node="end"><ellipse cx="716" cy="278" rx="28" ry="18"></ellipse><text x="702" y="282">END</text></g>
+      </svg>
+      <div class="codepanel">
+        <h4 id="cpTitle"></h4>
+        <div class="desc" id="cpDesc"></div>
+        <pre class="code" id="cpCode"></pre>
+        <div class="srcfile" id="cpSrc"></div>
+      </div>
+      <div class="hintbar">click a node above · the trace replay below also highlights nodes as you step</div>
+    </div>
+
+    <!-- REPLAY -->
+    <div class="replay" id="replay">
+      <div class="rhead">
+        <h3>Trace replay — a recorded run, one turn at a time</h3>
+        <div class="controls">
+          <button id="rPrev">← back</button>
+          <span class="prog" id="rProg"></span>
+          <button id="rNext" class="primary">next →</button>
+        </div>
+      </div>
+      <p class="dim" style="font-size:.9rem;margin:.6rem 0 0">
+        This replays the first recorded end-to-end run of the single agent (“Run 1” in PROJECT_STATUS.md):
+        a real flagged transaction drawn at random from Snowflake, final decision
+        <b>BLOCK / GEO_JUMP / confidence 0.9</b>, ground truth <b>legitimate</b> — a false positive from the
+        corrupted-geo era, before the geo fix (<a href="index.html#moments">Field Note №3</a>).
+        Every quoted artifact is verbatim from the repo. Tags mark provenance:
+        <span class="tag rec">recorded</span> facts from the run,
+        <span class="tag mech">mechanics</span> guaranteed by the code shown, and
+        <span class="tag unrec">not recorded</span> where the record simply doesn't capture something —
+        no dialogue is invented to fill those gaps.
+      </p>
+      <div class="rstep" id="rStep"></div>
+    </div>
+  </div>
+</section>
+
+<section id="multi">
+  <div class="wrap">
+    <div class="kicker">Part C · The multi-agent system (Phase 4)</div>
+    <h2>The supervisor graph — same primitives, different shape</h2>
+    <p class="dim">
+      Drawn from <code>FraudOrchestrator._build_graph()</code>. One router node dispatches four specialists
+      over a shared blackboard; every specialist loops back to the router except <code>decision_agent</code>,
+      which is terminal. Click nodes for the real code.
+    </p>
+
+    <div class="diagram-wrap">
+      <svg class="graph" viewBox="0 0 780 400" role="img" aria-label="Supervisor graph: START to orchestrator; conditional edges to four specialists; three loop back to orchestrator; decision_agent goes to END" id="multiSvg">
+        <!-- edges: orchestrator -> specialists (conditional) -->
+        <path class="edge cond" d="M330,168 C400,120 440,86 490,72"></path>
+        <path class="edge cond" d="M334,184 C400,168 440,152 490,148"></path>
+        <path class="edge cond" d="M334,208 C400,222 440,236 490,240"></path>
+        <path class="edge cond" d="M330,224 C400,270 440,306 490,322"></path>
+        <!-- loops back -->
+        <path class="edge" d="M490,56 C340,10 240,60 236,128"></path>
+        <path class="edge" d="M490,134 C430,110 330,120 300,148"></path>
+        <path class="edge" d="M490,254 C430,278 330,268 300,240"></path>
+        <!-- decision -> END -->
+        <path class="edge" d="M660,338 L700,350"></path>
+        <path class="edge" d="M96,196 L172,196"></path>
+        <text class="lbl" x="352" y="146">state["next_agent"]</text>
+        <text class="lbl" x="300" y="34">specialists return to the router</text>
+        <!-- nodes -->
+        <g class="gnode" data-node="mstart"><ellipse cx="62" cy="196" rx="34" ry="20"></ellipse><text x="42" y="200">START</text></g>
+        <g class="gnode" data-node="orch"><rect x="172" y="160" width="162" height="72" rx="10"></rect><text x="204" y="190">orchestrator</text><text class="lbl" x="216" y="210">_route</text></g>
+        <g class="gnode" data-node="feature"><rect x="490" y="40" width="170" height="52" rx="10"></rect><text x="518" y="62">feature_agent</text><text class="lbl" x="500" y="80">fetch + read signals</text></g>
+        <g class="gnode" data-node="risk"><rect x="490" y="118" width="170" height="52" rx="10"></rect><text x="534" y="140">risk_agent</text><text class="lbl" x="500" y="158">user baseline (skippable)</text></g>
+        <g class="gnode" data-node="policy"><rect x="490" y="212" width="170" height="52" rx="10"></rect><text x="524" y="234">policy_agent</text><text class="lbl" x="500" y="252">RAG, required pre-decision</text></g>
+        <g class="gnode" data-node="decision"><rect x="490" y="306" width="170" height="52" rx="10"></rect><text x="512" y="328">decision_agent</text><text class="lbl" x="524" y="346">terminal — no tools</text></g>
+        <g class="gnode" data-node="mend"><ellipse cx="728" cy="356" rx="28" ry="18"></ellipse><text x="714" y="360">END</text></g>
+      </svg>
+      <div class="codepanel">
+        <h4 id="mpTitle"></h4>
+        <div class="desc" id="mpDesc"></div>
+        <pre class="code" id="mpCode"></pre>
+        <div class="srcfile" id="mpSrc"></div>
+      </div>
+      <div class="hintbar">click a node above</div>
+    </div>
+
+    <h3>A recorded supervisor run, verbatim</h3>
+    <p class="dim" style="font-size:.9rem">
+      These lines are quoted directly from a logged end-to-end run (2026-07-06, the governance demo running
+      through the packaged code): a $32.17 transaction, router rationales exactly as the structured
+      <code>RouteDecision.rationale</code> emitted them. Note what the router does with a clear-cut case:
+      it <em>skips</em> risk_agent entirely — the LLM-chooses-the-skips half of the design working as intended.
+    </p>
+    <div class="runlog">
+      <div><span class="who">orchestrator → feature_agent:</span> <span class="quote">“We need to identify which fraud features are elevated for this transaction before deciding which specialist to run next.”</span></div>
+      <div><span class="who spec">feature_agent:</span> <span class="quote">elevated: none</span> <span class="meta">(it also flagged the geo distance as unreliable — this run came after the time-delta input fix)</span></div>
+      <div><span class="who">orchestrator → policy_agent:</span> <span class="quote">“The feature_agent has identified potentially relevant information, such as the is_new_device flag and the unreliable geo_distance_km, so the policy_agent should be consulted to determine the platform's documented fraud policy regarding these patterns.”</span></div>
+      <div><span class="who spec">policy_agent:</span> <span class="quote">searched 1 pattern scope</span></div>
+      <div><span class="who">orchestrator → decision_agent:</span> <span class="quote">“The policy guidance is clear that a velocity count below 3 with no other elevated signal should be allowed, and since the feature findings do not indicate any other decisive factors, the decision can be made based on the current information.”</span></div>
+      <div><span class="who spec">decision_agent:</span> <span class="quote">ALLOW (confidence 0.8, pattern NONE)</span></div>
+      <div><span class="meta">governance layer: tier AUTO_APPROVE — “Confident allow at $32.17 (≤ $500 cap) — routine, executes silently.” · risk_agent: skipped</span></div>
+    </div>
+
+    <h3>Where the two architectures mechanically diverge</h3>
+    <p class="dim" style="font-size:.9rem">Each row is verifiable in the two files shown in the diagrams above — this is a code comparison, not a philosophy comparison.</p>
+    <table class="divergence" id="divergence">
+      <thead><tr><th>Mechanism</th><th>Single agent (ReAct)</th><th>Multi-agent (supervisor)</th></tr></thead>
+      <tbody>
+        <tr><td>Model judgment</td>
+          <td>Everywhere: the <b>same LLM conversation</b> decides which tool to call, when to stop, and what to conclude.</td>
+          <td>Routing only. Specialists have <b>no tool-choice autonomy</b>: each does one deterministic <code>tool.invoke(...)</code> in code, then one focused LLM call to interpret it.</td></tr>
+        <tr><td>State shape</td>
+          <td><code>messages</code> is the working memory — tool results exist <b>only</b> as ToolMessages inside the conversation.</td>
+          <td>A typed <b>blackboard</b>: <code>feature_findings</code>, <code>elevated_patterns</code>, <code>risk_assessment</code>, <code>policy_guidance</code> — specialists read each other's typed fields; <code>messages</code> is demoted to a narrative log.</td></tr>
+        <tr><td>Reducers</td>
+          <td><code>add_messages</code> only.</td>
+          <td><code>add_messages</code> <b>plus</b> <code>operator.add</code> on <code>agents_invoked</code> — each node appends its name, which is what the router's run-at-most-once check reads.</td></tr>
+        <tr><td>Tool binding</td>
+          <td><code>llm.bind_tools(ALL_TOOLS)</code>: the model emits <code>tool_calls</code>; <code>ToolNode</code> executes whatever it asked for.</td>
+          <td>Tools are <b>constructor-injected</b> by the orchestrator (one owner of cross-module reuse); specialists call them unconditionally — “letting a model decide to do the only thing it exists to do costs a round-trip for nothing.”</td></tr>
+        <tr><td>The policy invariant</td>
+          <td>A <b>prompt instruction</b>: “Always call get_policy_context at least once before deciding” — the model <i>could</i> ignore it.</td>
+          <td><b>Code</b>: <code>_route</code> overrides any attempt to reach <code>decision_agent</code> before <code>policy_agent</code> has run — structurally impossible to violate.</td></tr>
+        <tr><td>Runaway protection</td>
+          <td><code>MAX_REASONING_STEPS = 8</code>: counts AIMessages, forces finalize.</td>
+          <td><code>ORCHESTRATOR_MAX_STEPS = 6</code>: hard-stops in <code>_route</code> before the LLM is even consulted, forcing policy-then-decision.</td></tr>
+        <tr><td>Termination</td>
+          <td>Emergent: the model stops requesting tools → conditional edge routes to <code>finalize</code>.</td>
+          <td>Structural: routing to the terminal <code>decision_agent</code> node ends the run by graph shape (<code>decision_agent → END</code>).</td></tr>
+        <tr><td>Attribution</td>
+          <td>AIMessages are unnamed — the trace writer labels them <code>single_agent</code>.</td>
+          <td>Every message carries <code>name=</code> (orchestrator or specialist) — which is exactly what <code>FACT_AGENT_TRACES.agent_name</code> and the HANDOFF step type consume.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="fidelity-inline">
+      <b>Fidelity notes for this page</b> — same discipline as the main page's Fidelity section:
+      <ul>
+        <li><b>Model free-text was not recorded</b> for the single-agent run being replayed: the demo printed the
+        final structured decision, not the intermediate AIMessage contents. The replay therefore quotes only
+        code, prompts, tool docstrings, tool return formats, and recorded run facts — never reconstructed dialogue.</li>
+        <li><b>Groq-call accounting:</b> the run is recorded as “4 Groq calls” while all three tools fired. Four
+        calls can cover three tools only if at least two tools were requested in a single AIMessage (LangChain
+        permits multiple <code>tool_calls</code> per message and <code>ToolNode</code> executes them all). The exact
+        grouping wasn't recorded, so the replay shows the maximally explicit one-tool-per-turn walk and says so.</li>
+        <li><b>The policy corpus is stale relative to the code:</b> <code>retrieval/policy_docs/geo_jump.md</code>
+        still documents the <em>old</em> hard rule (“normalized geo-distance signal reaches 0.95”), which the geo
+        investigation replaced with the speed-or-3000km composite. The RAG documents were never updated after the
+        fix. The replayed run predates the fix, so the excerpt shown is what the agent would genuinely have
+        retrieved at the time — but a run today would retrieve outdated policy text. Found while building this
+        page; disclosed rather than silently corrected.</li>
+        <li><b>A stale comment in agent.py:</b> the MemorySaver comment still says writing FACT_AGENT_TRACES is
+        “the next piece to build, not yet done” — that was true in Phase 3 and false since Phase 6 built the
+        trace writer. Quoted code on this page is verbatim, stale comments included.</li>
+        <li><b>The diagrams are hand-drawn from <code>_build_graph()</code></b>, not auto-generated by LangGraph —
+        node names, edges, and conditions were transcribed from the code shown in each panel.</li>
+        <li><b>The supervisor run log is verbatim</b> from the recorded session, including the decision agent's
+        claim about “a velocity count below 3” — that is what the model said it found in policy; whether the
+        retrieved policy text actually says that was not verified in the record, so it is presented as a quote,
+        not as a fact about the policy.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a href="stack.html">← Tech stack</a> ·
+    <a href="index.html">The process story</a> ·
+    Source files: <code>fraud_platform/agents/single_agent/</code> · <code>fraud_platform/agents/multi_agent/</code>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ verbatim code (injected via textContent) ============ */
+  var STATE_CODE =
+'class AgentState(TypedDict):\n' +
+'    """\n' +
+'    Everything the agent needs, and everything it produces.\n' +
+'\n' +
+'    messages: the ReAct loop\'s running conversation — system\n' +
+'        prompt, the transaction being evaluated, every tool call\n' +
+'        the LLM makes, every tool result, and the LLM\'s reasoning\n' +
+'        at each step. This list IS the audit trail — it maps\n' +
+'        directly to FACT_AGENT_TRACES (step_number = position in\n' +
+'        this list, step_type = HumanMessage/AIMessage/ToolMessage\n' +
+'        type, tool_name/tool_input/tool_output = the tool call\n' +
+'        details LangGraph already captures on AIMessage.tool_calls).\n' +
+'    ...\n' +
+'    """\n' +
+'\n' +
+'    messages: Annotated[list[BaseMessage], add_messages]\n' +
+'\n' +
+'    # ---- Input: the transaction being evaluated ----\n' +
+'    transaction_id: str\n' +
+'    user_id: str\n' +
+'    amount: float\n' +
+'    # ... geo_distance_km, time_since_last_txn_min, amount_zscore, velocity_15min ...\n' +
+'\n' +
+'    # ---- Output: what the agent decides ----\n' +
+'    decision: Optional[str]              # "ALLOW" | "BLOCK" | "ESCALATE"\n' +
+'    confidence_score: Optional[float]    # 0.0 to 1.0\n' +
+'    reasoning_text: Optional[str]\n' +
+'    identified_pattern: Optional[str]';
+  document.getElementById("stateCode").textContent = STATE_CODE;
+
+  var SINGLE_NODES = {
+    start: {
+      t: "START → agent",
+      d: "evaluate() seeds the initial state: the system prompt, one HumanMessage carrying the transaction’s computed features, the typed input fields, and None for every output field. thread_id = transaction_id keeps each transaction’s checkpointed state independent.",
+      c:
+'graph.add_edge(START, "agent")\n\n' +
+'# from evaluate():\n' +
+'initial_state: AgentState = {\n' +
+'    "messages": [\n' +
+'        SystemMessage(content=SYSTEM_PROMPT),\n' +
+'        HumanMessage(content=(\n' +
+'            f"Evaluate this transaction:\\n"\n' +
+'            f"transaction_id: {transaction[\'transaction_id\']}\\n"\n' +
+'            f"amount: ${transaction[\'amount\']}\\n"\n' +
+'            f"geo_distance_km: {transaction.get(\'geo_distance_km\')}\\n"\n' +
+'            f"time_since_last_txn_min: {transaction.get(\'time_since_last_txn_min\')}"\n' +
+'            f" (negative or missing means out-of-order state — the geo distance above is then unreliable)\\n"\n' +
+'            # ... amount_zscore, velocity_15min, is_new_device ...\n' +
+'        ))\n' +
+'    ],\n' +
+'    ...\n' +
+'}\n' +
+'config_dict = {"configurable": {"thread_id": thread_id}}\n' +
+'final_state = self._graph.invoke(initial_state, config=config_dict)',
+      s: "fraud_platform/agents/single_agent/agent.py — evaluate()"
+    },
+    agent: {
+      t: "agent — _call_model",
+      d: "The ‘reason’ half of ReAct. One LLM call over the FULL message history (which, thanks to add_messages, contains every prior tool result) using the tool-bound client. Whatever it returns — tool requests or a final free-text answer — is appended to messages.",
+      c:
+'self._llm_with_tools = self._llm.bind_tools(ALL_TOOLS)\n\n' +
+'def _call_model(self, state: AgentState) -> dict:\n' +
+'    """\n' +
+'    The \'reason\' half of ReAct. Invokes the LLM with the\n' +
+'    current message history — which includes every prior\n' +
+'    tool result — so each call genuinely observes what the\n' +
+'    previous tool calls returned before deciding what to do\n' +
+'    next.\n' +
+'    """\n' +
+'    response = self._llm_with_tools.invoke(state["messages"])\n' +
+'    return {"messages": [response]}',
+      s: "fraud_platform/agents/single_agent/agent.py"
+    },
+    cond: {
+      t: "conditional edge — _should_continue",
+      d: "Plain Python deciding the next node by name. Two rules: if the last AIMessage requested tools → “tools”; otherwise → “finalize”. And before either check, the runaway cap: once 8 AIMessages have accumulated, finalize is forced even if the model still wants tools.",
+      c:
+'def _should_continue(self, state: AgentState) -> str:\n' +
+'    """\n' +
+'    MAX_REASONING_STEPS is a hard safety cap — counts AI\n' +
+'    messages so far and forces "finalize" once the cap is\n' +
+'    hit, even if the LLM still wants to call more tools.\n' +
+'    Without this, a confused or looping agent could run\n' +
+'    indefinitely, burning tokens on every retry.\n' +
+'    """\n' +
+'    ai_message_count = sum(1 for m in state["messages"] if isinstance(m, AIMessage))\n' +
+'    if ai_message_count >= config.MAX_REASONING_STEPS:   # 8\n' +
+'        return "finalize"\n' +
+'\n' +
+'    last_message = state["messages"][-1]\n' +
+'    if isinstance(last_message, AIMessage) and last_message.tool_calls:\n' +
+'        return "tools"\n' +
+'    return "finalize"',
+      s: "fraud_platform/agents/single_agent/agent.py"
+    },
+    tools: {
+      t: "tools — ToolNode(ALL_TOOLS)",
+      d: "LangGraph’s prebuilt executor: reads tool_calls off the last AIMessage, runs the matching @tool functions (all of them, if the model requested several at once), and appends one ToolMessage per call. The three tools wrap Redis, Weaviate hybrid search, and Snowflake DIM reads.",
+      c:
+'graph.add_node("tools", ToolNode(ALL_TOOLS))\n' +
+'graph.add_edge("tools", "agent")   # unconditional: observe, then reason again\n\n' +
+'ALL_TOOLS = [get_transaction_features, get_policy_context, get_user_history]\n\n' +
+'# Docstrings here are NOT just documentation — they are what the\n' +
+'# LLM actually reads to decide when and how to call each tool.\n' +
+'# Precision in these docstrings directly affects tool-calling\n' +
+'# reliability.   (tools.py, verbatim)',
+      s: "fraud_platform/agents/single_agent/agent.py + tools.py"
+    },
+    finalize: {
+      t: "finalize — _finalize",
+      d: "Runs once, when the loop stops requesting tools. Instead of regex-parsing the model’s last free-text message, it asks the SAME conversation to restate its conclusion through with_structured_output(DecisionOutput) — a typed, validated schema.",
+      c:
+'self._llm_structured = self._llm.with_structured_output(DecisionOutput)\n\n' +
+'def _finalize(self, state: AgentState) -> dict:\n' +
+'    result: DecisionOutput = self._llm_structured.invoke(\n' +
+'        state["messages"] + [\n' +
+'            HumanMessage(content=(\n' +
+'                "Based on everything above, provide your final structured decision."\n' +
+'            ))\n' +
+'        ]\n' +
+'    )\n' +
+'    return {\n' +
+'        "decision": result.decision,\n' +
+'        "confidence_score": result.confidence_score,\n' +
+'        "identified_pattern": result.identified_pattern,\n' +
+'        "reasoning_text": result.reasoning_text,\n' +
+'    }\n\n' +
+'class DecisionOutput(BaseModel):\n' +
+'    decision: Literal["ALLOW", "BLOCK", "ESCALATE"]\n' +
+'    confidence_score: float          # ge=0.0, le=1.0\n' +
+'    identified_pattern: str          # one of the 4 patterns, or NONE\n' +
+'    reasoning_text: str',
+      s: "fraud_platform/agents/single_agent/agent.py"
+    },
+    end: {
+      t: "finalize → END",
+      d: "The graph returns the final state: the full message history plus the four populated output fields. Downstream (Phases 5–6), governance assigns an autonomy tier, persistence writes FACT_DECISIONS, and the trace writer maps this messages list row-by-row into FACT_AGENT_TRACES.",
+      c:
+'graph.add_edge("finalize", END)\n\n' +
+'# MemorySaver — ... this is RAM-based and ephemeral, lost\n' +
+'# on process restart. It\'s enough to let LangGraph track\n' +
+'# state across the graph\'s own execution; it is NOT the\n' +
+'# durable audit trail. FACT_AGENT_TRACES in Snowflake is\n' +
+'# what actually persists the reasoning trace long-term —\n' +
+'# writing to it is the next piece to build, not yet done.\n' +
+'#   ^ verbatim, and STALE: the trace writer exists since Phase 6.\n' +
+'#     (see this page\'s fidelity notes)\n' +
+'checkpointer = MemorySaver()\n' +
+'return graph.compile(checkpointer=checkpointer)',
+      s: "fraud_platform/agents/single_agent/agent.py — _build_graph()"
+    }
+  };
+
+  /* ============ single-agent diagram wiring ============ */
+  var svgS = document.getElementById("singleSvg");
+  function bindGraph(svg, nodes, tEl, dEl, cEl, sEl, defaultKey){
+    var groups = svg.querySelectorAll(".gnode");
+    function show(key){
+      groups.forEach(function(g){ g.classList.toggle("active", g.dataset.node===key); });
+      var n = nodes[key]; if(!n) return;
+      document.getElementById(tEl).textContent = n.t;
+      document.getElementById(dEl).textContent = n.d;
+      document.getElementById(cEl).textContent = n.c;
+      document.getElementById(sEl).textContent = n.s;
+    }
+    groups.forEach(function(g){
+      g.addEventListener("click", function(){ show(g.dataset.node); });
+    });
+    show(defaultKey);
+    return show;
+  }
+  var showSingle = bindGraph(svgS, SINGLE_NODES, "cpTitle","cpDesc","cpCode","cpSrc", "agent");
+
+  /* ============ trace replay ============ */
+  var SYSTEM_PROMPT_EXCERPT =
+'You are a fraud decisioning agent for a real-time transaction platform.\n\n' +
+'For every transaction you evaluate, you have three tools available:\n' +
+'- get_transaction_features: live signals for this user right now (velocity,\n' +
+'  geo-distance, amount z-score, new device, pre-computed risk score)\n' +
+'- get_policy_context: search the fraud policy knowledge base for guidance\n' +
+'- get_user_history: this user\'s baseline profile, for context on borderline cases\n\n' +
+'You do not need to use every tool for every transaction. ...\n' +
+'Reserve get_user_history for genuinely borderline cases.\n\n' +
+'Always call get_policy_context at least once before deciding — your\n' +
+'decision must be grounded in the platform\'s actual documented policy,\n' +
+'not general fraud knowledge. Cite what the policy actually said in\n' +
+'your reasoning.\n\n' +
+'Your final decision must be one of: ALLOW, BLOCK, ESCALATE. ...';
+
+  var REPLAY = [
+    {
+      node:"start", phase:"turn 0 · setup", title:"evaluate() seeds the state",
+      desc:"A real flagged row is drawn at random from FEATURES.FACT_FEATURE_SNAPSHOTS (the demo’s fetch keeps the ground-truth columns hidden from the agent). The state starts with two messages: the system prompt and the transaction.",
+      tags:[["mech","mechanics"],["rec","recorded: a random flagged, ground-truth-labeled row was drawn"]],
+      artifacts:[
+        {label:"The system prompt (verbatim, excerpted)", code: SYSTEM_PROMPT_EXCERPT}
+      ],
+      note:{kind:"rec", text:"Recorded about this run: it happened before the geo fix and before time_since_last_txn_min was added to the inputs — the agent saw a geo distance with no time context."}
+    },
+    {
+      node:"agent", phase:"turn 1 · reason", title:"LLM call: the model reads the case and asks for evidence",
+      desc:"_call_model invokes the tool-bound LLM over the two messages. What the model ‘knows’ about each tool is exactly its docstring — tools.py says so explicitly. The features tool’s own docstring tells the model to call it FIRST.",
+      tags:[["mech","mechanics"],["rec","recorded: 4 Groq calls total; all 3 tools fired in this run"],["unrec","not recorded: the model’s own words"]],
+      artifacts:[
+        {label:"What the model reads about the first tool (verbatim docstring)", code:
+'@tool\n' +
+'def get_transaction_features(user_id: str) -> str:\n' +
+'    """\n' +
+'    Get the current, live fraud-detection features for a user\n' +
+'    from the online feature store. Returns velocity counts,\n' +
+'    amount z-score, geo-distance from last known location, new\n' +
+'    device flag, and the pre-computed risk score.\n' +
+'\n' +
+'    Use this FIRST, before other tools — it tells you what\n' +
+'    signals are actually elevated for this user right now, which\n' +
+'    should guide what you look up next ...\n' +
+'    """'}
+      ],
+      note:{kind:"unrec", text:"The AIMessage’s free text and exact tool_calls arguments were not printed by the demo, so they are not reproduced here. What is guaranteed by code: the response was appended to messages via the add_messages reducer."}
+    },
+    {
+      node:"cond", phase:"turn 1 · route", title:"_should_continue: tool_calls present → “tools”",
+      desc:"One AIMessage so far (1 < MAX_REASONING_STEPS=8), and it carries tool_calls — so the conditional edge returns “tools”.",
+      tags:[["mech","mechanics — the exact code is in the diagram panel above (click the _should_continue node)"]],
+      artifacts:[],
+      note:null
+    },
+    {
+      node:"tools", phase:"turn 1 · act + observe", title:"ToolNode runs get_transaction_features — and the store is empty",
+      desc:"The tool GETs user:{user_id}:features from Redis. Here the record is specific: at the time of this run, Redis was empty — the 24-hour feature TTL had expired everything since the pipeline last ran. So the observation appended as a ToolMessage was the tool’s exact fallback string.",
+      tags:[["rec","recorded: Redis was empty (TTL expiry) — documented in PROJECT_STATUS.md"],["mech","mechanics"]],
+      artifacts:[
+        {label:"The tool’s two return paths (verbatim)", code:
+'features = _feature_reader.get_features(user_id)\n' +
+'if not features:\n' +
+'    return f"No feature data found in the online store for user {user_id}."\n' +
+'return json.dumps(features, indent=2, default=str)'},
+        {label:"So the ToolMessage content was, literally", code:
+'No feature data found in the online store for user <user_id>.'}
+      ],
+      note:{kind:"rec", text:"This is why the agent still worked: the transaction’s computed features were already in the HumanMessage from step 0. The empty online store cost it nothing — documented, intended degradation."}
+    },
+    {
+      node:"agent", phase:"turn 2 · reason", title:"Back to the agent: observe, then ask for policy",
+      desc:"The unconditional tools→agent edge fires. The LLM now sees the ToolMessage in history and — per the system prompt’s hard instruction — must consult policy before deciding. The policy tool’s docstring offers a pattern filter; both recorded runs of this era concluded GEO_JUMP.",
+      tags:[["mech","mechanics"],["rec","recorded: the Weaviate policy search fired"],["unrec","not recorded: the exact question/filter arguments"]],
+      artifacts:[
+        {label:"What the model reads about the policy tool (verbatim docstring, excerpted)", code:
+'@tool\n' +
+'def get_policy_context(question: str, fraud_pattern: Optional[str] = None) -> str:\n' +
+'    """\n' +
+'    Search the fraud policy knowledge base for guidance relevant\n' +
+'    to a question. Uses hybrid search (keyword + semantic), so\n' +
+'    you can ask in natural language ...\n' +
+'\n' +
+'    Optionally narrow to one specific pattern if you already know\n' +
+'    which one is relevant (VELOCITY_SPIKE, GEO_JUMP, NEW_DEVICE,\n' +
+'    or AMOUNT_ANOMALY) ...\n' +
+'    """'}
+      ],
+      note:null
+    },
+    {
+      node:"tools", phase:"turn 2 · act + observe", title:"ToolNode runs get_policy_context — hybrid search over the policy corpus",
+      desc:"Weaviate fuses BM25 + vector scores (alpha=0.5), optionally filtered to one pattern, and the tool formats the top 3 chunks. Below is the exact formatting code and a verbatim excerpt of what the GEO_JUMP policy document contains.",
+      tags:[["mech","mechanics"],["rec","recorded: corpus content"]],
+      artifacts:[
+        {label:"The tool’s result formatting (verbatim)", code:
+'formatted = []\n' +
+'for r in results:\n' +
+'    formatted.append(\n' +
+'        f"[{r[\'pattern\']} / {r[\'section\']}] (relevance: {r[\'score\']:.2f})\\n{r[\'text\']}"\n' +
+'    )\n' +
+'return "\\n\\n---\\n\\n".join(formatted)'},
+        {label:"What the GEO_JUMP policy doc actually says (verbatim excerpt — note the fidelity flag below)", code:
+'## Detection Threshold\n\n' +
+'The platform computes implied travel speed as distance divided by\n' +
+'elapsed time. A speed greater than 900 kilometers per hour is\n' +
+'treated as impossible travel. ...\n\n' +
+'A hard-rule override exists for this pattern: if the normalized\n' +
+'geo-distance signal reaches 0.95 or higher ... the transaction is\n' +
+'flagged automatically, independent of any other signal.'}
+      ],
+      note:{kind:"unrec", text:"Fidelity flag: that last paragraph describes the OLD hard rule. It was accurate when this run happened, but the geo investigation later replaced the rule — and the policy corpus was never updated. A run today would retrieve outdated policy text. Found while building this page; see the fidelity notes below."}
+    },
+    {
+      node:"tools", phase:"turn 3 · act + observe", title:"Third tool: get_user_history pulls the user’s baseline",
+      desc:"Recorded: the Snowflake DIM read fired in this run. The tool queries DIM_USERS (current SCD2 row) and counts trusted devices, returning the profile as JSON. The docstring frames it as the borderline-case tool.",
+      tags:[["rec","recorded: the DIM history read fired"],["mech","mechanics"],["unrec","not recorded: the returned values"]],
+      artifacts:[
+        {label:"The exact columns the model receives (verbatim query)", code:
+'SELECT full_name, home_city, home_country, risk_tier,\n' +
+'       avg_transaction_amt, stddev_transaction_amt,\n' +
+'       account_created_at\n' +
+'FROM DIM.DIM_USERS\n' +
+'WHERE user_id = %(user_id)s AND is_current = TRUE\n' +
+'-- plus: COUNT(*) AS trusted_device_count FROM DIM.DIM_DEVICES ...'}
+      ],
+      note:{kind:"rec", text:"Postscript from a later round: these fields include real names and home locations, and the trace writer used to persist them verbatim — the independent audit caught it, and traces are now redacted before insert (Field Note №4)."}
+    },
+    {
+      node:"cond", phase:"final route", title:"_should_continue: no tool_calls → “finalize”",
+      desc:"The model’s next response carries no tool requests — it has what it needs. The conditional edge routes to finalize. (Had the conversation reached 8 AIMessages, the cap would have forced this same route.)",
+      tags:[["mech","mechanics"]],
+      artifacts:[],
+      note:null
+    },
+    {
+      node:"finalize", phase:"structured output", title:"finalize: restate the conclusion as a typed schema",
+      desc:"One more LLM call — the same history plus one literal instruction — through with_structured_output(DecisionOutput). No regex over free text; the schema is validated (Literal decision, confidence bounded 0–1).",
+      tags:[["mech","mechanics"]],
+      artifacts:[
+        {label:"The literal appended instruction (verbatim)", code:
+'"Based on everything above, provide your final structured decision."'}
+      ],
+      note:null
+    },
+    {
+      node:"end", phase:"result", title:"END — the recorded outcome",
+      desc:"The graph returns the final state. The recorded result of this run, and the recorded ground truth the agent never saw:",
+      tags:[["rec","recorded"]],
+      artifacts:[
+        {label:"Recorded outcome (PROJECT_STATUS.md, Run 1)", code:
+'decision:            BLOCK\n' +
+'identified_pattern:  GEO_JUMP\n' +
+'confidence_score:    0.9\n' +
+'ground truth:        LEGITIMATE  (agent never saw this)\n' +
+'total Groq calls:    4'}
+      ],
+      note:{kind:"rec", text:"A confident false positive — and an honest one: the agent correctly read a geo feature that was itself corrupted (out-of-order replay + state poisoning, Field Note №3). The fix landed later at the feature source, plus the time-delta input that lets agents recognize unreliable geo evidence. This is why the eval loop exists."}
+    }
+  ];
+
+  var rIdx = 0;
+  var rStep = document.getElementById("rStep"),
+      rPrev = document.getElementById("rPrev"),
+      rNext = document.getElementById("rNext"),
+      rProg = document.getElementById("rProg");
+  function esc(s){ var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+  function renderReplay(){
+    var s = REPLAY[rIdx];
+    var html = '<div class="rphase">'+esc(s.phase)+'</div><h4>'+esc(s.title)+'</h4>' +
+               '<div>'+s.tags.map(function(t){return '<span class="tag '+t[0]+'">'+esc(t[1])+'</span>';}).join('')+'</div>' +
+               '<div class="rdesc">'+esc(s.desc)+'</div>';
+    rStep.innerHTML = html;
+    s.artifacts.forEach(function(a){
+      var w = document.createElement("div"); w.className = "artifact";
+      var l = document.createElement("div"); l.className = "alabel"; l.textContent = a.label;
+      var p = document.createElement("pre"); p.className = "code"; p.textContent = a.code;
+      w.appendChild(l); w.appendChild(p); rStep.appendChild(w);
+    });
+    if(s.note){
+      var n = document.createElement("div"); n.className = "recbox "+s.note.kind;
+      n.textContent = s.note.text; rStep.appendChild(n);
+    }
+    rProg.textContent = "step "+(rIdx+1)+" / "+REPLAY.length;
+    rPrev.disabled = (rIdx===0);
+    rNext.textContent = (rIdx===REPLAY.length-1) ? "restart ↺" : "next →";
+    // drive the diagram highlight
+    svgS.querySelectorAll(".gnode").forEach(function(g){
+      g.classList.toggle("pulse", g.dataset.node===s.node);
+    });
+  }
+  rPrev.addEventListener("click", function(){ if(rIdx>0){ rIdx--; renderReplay(); } });
+  rNext.addEventListener("click", function(){ rIdx = (rIdx===REPLAY.length-1) ? 0 : rIdx+1; renderReplay(); });
+  renderReplay();
+
+  /* ============ multi-agent diagram ============ */
+  var MULTI_NODES = {
+    mstart: {
+      t: "START → orchestrator",
+      d: "evaluate() seeds the blackboard: transaction inputs, None for every findings slot, agents_invoked=[] — the same FACT_FEATURE_SNAPSHOTS row shape feeds either architecture unchanged.",
+      c:
+'initial_state: MultiAgentState = {\n' +
+'    "messages": [HumanMessage(content=f"Evaluate transaction {…}")],\n' +
+'    # inputs: amount, geo_distance_km, time_since_last_txn_min, ...\n' +
+'    "feature_findings": None,\n' +
+'    "elevated_patterns": None,\n' +
+'    "risk_assessment": None,\n' +
+'    "policy_guidance": None,\n' +
+'    "agents_invoked": [],\n' +
+'    "next_agent": None,\n' +
+'    ...\n' +
+'}',
+      s: "fraud_platform/agents/multi_agent/orchestrator.py — evaluate()"
+    },
+    orch: {
+      t: "orchestrator — _route",
+      d: "The router: hard stops FIRST (no LLM call when there’s no real choice), then the LLM picks from the remaining specialists, then two code guardrails override illegal picks. ‘The model’s pick is a preference, the invariants are law.’",
+      c:
+'invoked = state["agents_invoked"]\n' +
+'available = [a for a in config.SPECIALIST_AGENTS if a not in invoked]\n' +
+'\n' +
+'# Hard stops first — no LLM call needed when there is no\n' +
+'# actual choice left to make.\n' +
+'if available == ["decision_agent"] or len(invoked) >= config.ORCHESTRATOR_MAX_STEPS - 1:\n' +
+'    ...forced policy_agent or decision_agent...\n' +
+'else:\n' +
+'    route: RouteDecision = self._router_llm.invoke([...evidence...])\n' +
+'    choice, rationale = route.next_agent, route.rationale\n' +
+'\n' +
+'    # Invariant 1: each specialist runs at most once.\n' +
+'    if choice not in available:\n' +
+'        choice = available[0]   # logged override\n' +
+'\n' +
+'    # Invariant 2: no decision without policy grounding —\n' +
+'    # the code-level twin of Phase 3\'s prompt rule. There it was\n' +
+'    # an instruction the model could ignore; here it is\n' +
+'    # structurally impossible to violate.\n' +
+'    if choice == "decision_agent" and "policy_agent" not in invoked:\n' +
+'        choice = "policy_agent"  # logged override',
+      s: "fraud_platform/agents/multi_agent/orchestrator.py — _route (condensed; overrides verbatim in file)"
+    },
+    feature: {
+      t: "feature_agent — deterministic fetch + one LLM read",
+      d: "The specialist shape: NOT a mini-ReAct loop. The tool call is unconditional code (the agent’s only job is to look at features — asking a model to decide to do the only thing it exists to do costs a round-trip for nothing); the single LLM call interprets, returning a typed FeatureFindings.",
+      c:
+'def run(self, state: MultiAgentState) -> dict:\n' +
+'    # Deterministic fetch — .invoke() on the LangChain tool object\n' +
+'    online_features = self._get_features.invoke({"user_id": state["user_id"]})\n' +
+'\n' +
+'    findings: FeatureFindings = self._llm.invoke([\n' +
+'        SystemMessage(content=SYSTEM_PROMPT),\n' +
+'        HumanMessage(content=(\n' +
+'            f"Transaction snapshot (from the feature pipeline):\\n"\n' +
+'            f"amount: ${state[\'amount\']}\\n"\n' +
+'            f"geo_distance_km: {state[\'geo_distance_km\']}\\n"\n' +
+'            f"time_since_last_txn_min: {state.get(\'time_since_last_txn_min\')}\\n"\n' +
+'            ...\n' +
+'        )),\n' +
+'    ])\n' +
+'    return {\n' +
+'        "feature_findings": findings.summary,\n' +
+'        "elevated_patterns": findings.elevated_patterns,\n' +
+'        "agents_invoked": [self.name],       # operator.add appends\n' +
+'        "messages": [AIMessage(content=findings.summary, name=self.name)],\n' +
+'    }',
+      s: "fraud_platform/agents/multi_agent/feature_agent.py — run()"
+    },
+    risk: {
+      t: "risk_agent — the skippable specialist",
+      d: "Fetches the user’s DIM baseline and judges how anomalous the transaction is FOR THIS USER, setting is_borderline. The router may skip it entirely on clear-cut cases — the recorded run below did exactly that. Same fetch-then-interpret shape as feature_agent.",
+      c:
+'# router prompt (verbatim, source line breaks preserved):\n' +
+'#   risk_agent: pulls the user\'s baseline profile and judges how anomalous\n' +
+'#   this transaction is for THIS user. Valuable for borderline cases;\n' +
+'#   skippable when the absolute signals are already decisive (e.g. a fully\n' +
+'#   saturated hard signal), saving a database fetch and a reasoning step.\n' +
+'\n' +
+'# its typed output feeds the decision agent:\n' +
+'#   risk_assessment: Optional[str]\n' +
+'#   is_borderline:   Optional[bool]   # biases toward ESCALATE',
+      s: "fraud_platform/agents/multi_agent/risk_agent.py + orchestrator ROUTER_SYSTEM_PROMPT"
+    },
+    policy: {
+      t: "policy_agent — required before any decision",
+      d: "One Weaviate hybrid search per elevated pattern (using the pattern filter), then one LLM call condensing the chunks into applicable rules. The router prompt marks it REQUIRED — and _route’s Invariant 2 makes that unbypassable in code.",
+      c:
+'# router prompt (verbatim, source line breaks preserved):\n' +
+'#   policy_agent: retrieves what the platform\'s documented fraud policy says\n' +
+'#   about the elevated patterns. REQUIRED before any decision — decisions\n' +
+'#   must be grounded in documented policy.\n' +
+'\n' +
+'# and the code that enforces it (orchestrator._route):\n' +
+'if choice == "decision_agent" and "policy_agent" not in invoked:\n' +
+'    choice, rationale = "policy_agent", (\n' +
+'        "(guardrail override) A decision requires policy grounding first."\n' +
+'    )',
+      s: "fraud_platform/agents/multi_agent/orchestrator.py"
+    },
+    decision: {
+      t: "decision_agent — terminal, and deliberately tool-less",
+      d: "Synthesizes the blackboard into the same DecisionOutput contract the single agent uses. It has NO tools by design — by the time routing reaches it, every piece of evidence is already a typed field. Routing here ends the run.",
+      c:
+'graph.add_edge("decision_agent", END)\n\n' +
+'# decision_agent.py — module header (verbatim):\n' +
+'# Terminal specialist — routing here ends the run. It makes NO\n' +
+'# tool calls: by the time the orchestrator routes to it, every\n' +
+'# piece of evidence it may use is already on the blackboard as a\n' +
+'# typed finding. Giving the decider its own tools would reopen\n' +
+'# the door Phase 4 deliberately closed — evidence-gathering and\n' +
+'# deciding are separate concerns handled by separate agents.',
+      s: "fraud_platform/agents/multi_agent/decision_agent.py + orchestrator._build_graph"
+    },
+    mend: {
+      t: "the conditional edge + END",
+      d: "All routing intelligence lives in _route; the conditional edge itself is a one-line lambda that just reads the recorded choice — ‘one place to debug a bad handoff.’ Specialists loop back to the router; decision_agent alone reaches END.",
+      c:
+'graph.add_edge(START, "orchestrator")\n' +
+'# The conditional edge just reads the router\'s recorded\n' +
+'# choice — all routing intelligence lives in _route, so\n' +
+'# there is exactly one place to debug a bad handoff.\n' +
+'graph.add_conditional_edges(\n' +
+'    "orchestrator",\n' +
+'    lambda state: state["next_agent"],\n' +
+'    {name: name for name in config.SPECIALIST_AGENTS},\n' +
+')\n' +
+'for name in config.SPECIALIST_AGENTS:\n' +
+'    if name != "decision_agent":\n' +
+'        graph.add_edge(name, "orchestrator")\n' +
+'graph.add_edge("decision_agent", END)',
+      s: "fraud_platform/agents/multi_agent/orchestrator.py — _build_graph()"
+    }
+  };
+  bindGraph(document.getElementById("multiSvg"), MULTI_NODES, "mpTitle","mpDesc","mpCode","mpSrc", "orch");
+})();
+</script>
+</body>
+</html>
