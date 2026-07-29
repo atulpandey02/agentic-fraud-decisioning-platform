@@ -18,3 +18,4 @@ secrets/
 
 # account-specific RBAC grants (copy of rbac_local_example.sql)
 snowflake/rbac_local.sql
+venv_fresh/
