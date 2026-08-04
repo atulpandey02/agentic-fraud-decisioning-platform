@@ -1,28 +1,131 @@
 # Agentic Fraud Decisioning Platform
 
-Real-time fraud decisioning: Kafka + Spark streaming features → Redis online
-store / Snowflake audit → RAG-grounded multi-agent decisions → governance &
-human-in-the-loop → agentic BI over the decision log.
+Real-time fraud decisioning built as a full data + AI pipeline: **Kafka + Spark**
+streaming features → **Redis** online store / **Snowflake** audit lake →
+**RAG-grounded LangGraph agents** that decide ALLOW / BLOCK / ESCALATE →
+**governance & human-in-the-loop** → **agentic BI** (natural-language SQL) over the
+decision log.
+
+It is an end-to-end demonstration of the data-engineering and agentic-AI surface a
+production fraud system touches — ingestion, a feature store, a medallion-style
+warehouse, retrieval-augmented reasoning, a multi-agent supervisor, autonomy
+governance, an audit trail, evaluation, and a guarded analytics layer — running
+locally on Docker with synthetic data.
 
 > **The story behind the code:** [`docs/index.html`](docs/index.html) is an
-> interactive single-page record of *how* this was built — the supervision
-> loop between a human and an autonomous coding agent, the bugs found twice,
-> the audit that contradicted an approval, and the metrics that lied.
-> Source of truth: [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md).
+> interactive, single-page record of *how* this was built — the supervision loop
+> between a human and an autonomous coding agent, the bugs found twice, the audit
+> that contradicted an approval, and the metrics that lied. Companion pages:
+> `docs/phases.html` (what/why per phase), `docs/stack.html` (each tool's role),
+> `docs/architecture.html` (the LangGraph graphs, clickable). Narrative source of
+> truth: [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md).
 > View locally: `python3 -m http.server 8710 --directory docs`.
 
-The code is one installable package, `fraud_platform`. Everything below assumes
-the repo root as the working directory and the virtualenv activated
-(`source venv/bin/activate`), or prefix commands with `./venv/bin/`.
+> **Scope & honesty:** this is a learning / portfolio project on **synthetic data**,
+> not a deployed commercial system. Evaluation samples have been small, so no
+> statistical confidence is claimed. See [Caveats](#honest-caveats).
+
+---
+
+## What it does, end to end
+
+```mermaid
+flowchart LR
+    GEN[Synthetic generator<br/>users · devices · txns<br/>+ injectable fraud] -->|produce| K[(Kafka<br/>fraud-transactions)]
+    K --> SP[Spark Structured Streaming<br/>z-score · geo · velocity · device<br/>two-tier risk score]
+    SP -->|online, 24h TTL| R[(Redis<br/>feature store)]
+    SP -->|offline audit| SF[(Snowflake<br/>DIM / RAW / FEATURES / DECISIONS)]
+    SF -->|flagged txn| AG{LangGraph agents}
+    R --> AG
+    KB[(Weaviate<br/>policy RAG)] --> AG
+    AG -->|ALLOW / BLOCK / ESCALATE| GOV[Governance<br/>autonomy tier + HITL queue]
+    GOV -->|durable decision + trace| SF
+    SF --> BI[Streamlit BI<br/>guarded NL2SQL]
+    style AG fill:#1b2634,stroke:#5cc8a5,color:#dbe4ee
+```
+
+A transaction is generated → streamed through Kafka → Spark computes fraud features
+(amount z-score, Haversine geo-distance, sliding-window velocity, new-device flag,
+and a two-tier risk score) → features land in Redis (online) and Snowflake (audit).
+A flagged transaction is handed to a **LangGraph agent** that reads the live
+features, retrieves the relevant **fraud policy** from a vector store, checks the
+user's baseline, and returns a decision grounded in documented policy. **Governance**
+then decides *how much autonomy* that decision gets (auto-approve / notify / queue
+for a human), persists it, and writes a full reasoning trace. An **LLM-judge eval**
+scores outcomes and reasoning, and a **guarded natural-language BI** layer answers
+questions over the decision log.
+
+---
+
+## Highlights
+
+- **Streaming feature engine** — Spark Structured Streaming with event-time windows;
+  Redis online store (N+1 fixed with `MGET`) + Snowflake offline audit. Two-tier
+  scoring: weighted signals *plus* hard-rule single-signal overrides.
+- **Two agent architectures, side by side** — a single **ReAct** agent (one model,
+  three tools, an explicit `StateGraph` loop with a step cap) and a **multi-agent
+  supervisor** (an LLM router over four focused specialists on a typed blackboard,
+  with invariants enforced in code — e.g. *policy grounding is required before any
+  decision*).
+- **RAG-grounded decisions** — Weaviate hybrid (keyword + vector) search over
+  authored fraud-policy docs; the agent must cite documented policy, not general
+  knowledge.
+- **Governance & HITL** — decisions map to autonomy tiers from asymmetric error
+  costs; a single owner writes every decision row *born complete* with its tier;
+  human verdicts accumulate as labeled eval data. Atomic review updates prevent
+  double-review races.
+- **Observability & evaluation** — every reasoning step persisted to
+  `FACT_AGENT_TRACES`; an eval runner scores decision accuracy against synthetic
+  ground truth *and* reasoning quality via an independent LLM judge, with
+  precision/recall/FPR/calibration metrics.
+- **Guarded agentic BI** — English → SQL via an LLM, but the LLM is treated as an
+  **untrusted SQL author**: an AST validator (sqlglot) enforces a SELECT-only,
+  table-allowlisted, single-statement boundary before anything reaches Snowflake.
+- **Least-privilege by design** — separate Snowflake roles per access domain
+  (`PIPELINE_ROLE` / `AGENT_ROLE` / `BI_ROLE`), with secondary roles confined so an
+  operator's admin grant can't silently ride along.
+- **Engineered like production** — installable package, typed & validated settings,
+  versioned idempotent migrations, a schema contract, resilience (retries / timeouts
+  / circuit breakers / per-transaction isolation), a locked dependency set, and CI
+  (lint, type-check, security scan, tests).
+
+---
+
+## Tech stack
+
+| Tool | Role in this system |
+|------|---------------------|
+| **Apache Kafka** (KRaft) | Transaction transport; keyed by `user_id` so per-user aggregation is shuffle-friendly |
+| **Spark Structured Streaming** | Feature computation in micro-batches (z-score, geo, velocity, device, risk) |
+| **Redis** | Online feature store the agents read (24-hour TTL) |
+| **Snowflake** | System of record — `DIM` / `RAW` / `FEATURES` / `DECISIONS` schemas + audit trail |
+| **S3 + Snowpipe** | Buffered Parquet → auto-ingest offline write path (with a direct-write fallback) |
+| **Weaviate** | Hybrid-search vector store over the fraud-policy corpus (RAG) |
+| **sentence-transformers** | `all-MiniLM-L6-v2` embeddings (local, CPU, 384-dim) |
+| **LangGraph** | The agent runtime — explicit `StateGraph`s (ReAct loop + supervisor) |
+| **Groq** | LLM inference (`llama-3.3-70b-versatile`) for agents, judge, and NL2SQL |
+| **sqlglot** | AST-based SQL guard for the NL2SQL surface |
+| **Streamlit** | The BI dashboard UI |
+| **Docker Compose** | Local orchestration of Kafka, Spark, Redis, Weaviate |
+
+Selected design decisions (rationale in [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md)):
+**ReAct** over Plan-and-Execute/Reflection (tool count varies per transaction);
+**LangGraph** over CrewAI (first-class cycles + node-level human-in-the-loop
+interrupts); **Weaviate** over Pinecone (native score fusion); A2A protocol and a
+Factory pattern were considered and deliberately *not* adopted.
+
+---
 
 ## Architecture (where things live)
+
+The code is one installable package, `fraud_platform`.
 
 | Area | Package | What it does |
 |------|---------|--------------|
 | Streaming features | `fraud_platform.stream_processing` | Spark feature engine, velocity engine, hard-rule + weighted scoring |
 | Data generation | `fraud_platform.data_generator` | Synthetic users/devices/transactions with injectable fraud |
 | Retrieval (RAG) | `fraud_platform.retrieval` | Weaviate hybrid search over fraud policy docs |
-| Single agent | `fraud_platform.agents.single_agent` | Phase 3 ReAct agent + its 3 tools |
+| Single agent | `fraud_platform.agents.single_agent` | ReAct agent + its 3 tools |
 | Multi-agent | `fraud_platform.agents.multi_agent` | Supervisor orchestrator + 4 specialists |
 | Governance / HITL | `fraud_platform.governance` | Autonomy tiers, decision persistence, review queue |
 | Observability / eval | `fraud_platform.observability` | Trace writer, LangSmith, eval + LLM judge |
@@ -31,13 +134,19 @@ the repo root as the working directory and the virtualenv activated
 
 Config is one typed, validated object: `fraud_platform.settings.get_settings()`.
 Credentials come from `.env` at the repo root (git-ignored). See
-`DATA_GOVERNANCE.md` for the access/redaction/retention policy and
-`GEO_FLAGGING_INVESTIGATION.md` / `PATTERN_ID_INVESTIGATION.md` for the
-scoring/accuracy analyses.
+[`DATA_GOVERNANCE.md`](DATA_GOVERNANCE.md) for the access/redaction/retention policy
+and [`GEO_FLAGGING_INVESTIGATION.md`](GEO_FLAGGING_INVESTIGATION.md) /
+[`PATTERN_ID_INVESTIGATION.md`](PATTERN_ID_INVESTIGATION.md) for the scoring/accuracy
+analyses.
 
-## Commands
+---
 
-### Bootstrap (install)
+## Quickstart
+
+Everything below assumes the repo root as the working directory and the virtualenv
+activated (`source venv/bin/activate`), or prefix commands with `./venv/bin/`.
+
+### 1. Bootstrap (install)
 ```bash
 python3.10 -m venv venv && source venv/bin/activate
 # Local dev (any OS) — resolve from the pyproject ranges:
@@ -48,21 +157,21 @@ pip install -e ".[rag,agents,bi,dev]"
 pip install -c constraints.txt -e ".[rag,agents,bi,dev]" \
     --extra-index-url https://download.pytorch.org/whl/cpu
 pip check                                  # must report no broken requirements
-cp .env.example .env                       # then fill in credentials (if provided)
+cp .env.example .env                       # then fill in credentials
 ```
 Dependency groups mirror the phased install: `rag`, `agents`, `bi`, `dev`.
-`constraints.txt` is the **Linux/CI lock** (CPU torch); the CI workflow uses
-exactly the pinned command above. On macOS, prefer the plain range install —
-the `+cpu` torch build is Linux-only.
+`constraints.txt` is the **Linux/CI lock** (CPU torch); the CI workflow uses exactly
+the pinned command above. On macOS, prefer the plain range install — the `+cpu`
+torch build is Linux-only.
 
-### Infrastructure up / down
+### 2. Infrastructure up / down
 ```bash
 docker compose up -d          # Kafka, Spark, Redis, Weaviate, Kafka UI
 docker compose ps             # health
 docker compose down           # stop (add -v to also drop volumes)
 ```
 
-### Database migrations
+### 3. Database: schema, RBAC, migrations
 ```bash
 # Fresh account/database — run these THREE in order (the order matters):
 #   1. snowflake/schema.sql   baseline: DB + schemas + base tables (run once)
@@ -77,44 +186,64 @@ fraud-migrate                 # apply pending VNNN__*.sql, idempotently
 # equivalently: python -m fraud_platform.db.migrate
 ```
 
-### Test, lint, type-check, security — exactly what CI runs
+### 4. Seed data + run the pipeline
 ```bash
-pytest -q                                              # 196 unit + mocked-adapter tests, no credentials
+# Users/devices into Snowflake DIM (also writes a local user_map.json cache):
+python -m fraud_platform.data_generator.user_profile_generator
+# Transactions into Kafka (backfill mode; --num bounds it, --bursts is optional):
+python -m fraud_platform.data_generator.transaction_stream_generator --backfill --num 25000
+# Compute features from Kafka → Redis + Snowflake:
+python -m fraud_platform.stream_processing.feature_engine
+#   FEATURE_WRITE_MODE=direct writes features straight to Snowflake (no Snowpipe);
+#   default "snowpipe" buffers Parquet to S3 for auto-ingest.
+```
+
+### 5. Demos (require live infra + credentials; exercise real services)
+```bash
+python -m fraud_platform.agents.single_agent.run_demo   # single ReAct loop
+python -m fraud_platform.agents.multi_agent.run_demo    # multi-agent orchestration
+python -m fraud_platform.governance.run_demo            # decide → tier → persist → review
+python -m fraud_platform.observability.eval_runner      # eval + LLM judge
+streamlit run fraud_platform/bi_dashboard/streamlit_app.py   # BI dashboard
+```
+The demos and `eval_runner` intentionally hit real Redis/Snowflake/Weaviate/Groq —
+they are not mocked. The unit test suite needs none of that.
+
+---
+
+## Testing, lint, type-check, security — exactly what CI runs
+```bash
+pytest -q                                              # unit + mocked-adapter tests, no credentials
 ruff check .                                           # lint: real-bug rules (F)
 mypy fraud_platform/settings.py fraud_platform/db      # type-check (scoped to typed modules)
 bandit -c pyproject.toml -r fraud_platform -ll         # security scan (medium+ severity)
 pip check                                              # dependency graph consistent
 ```
-CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR,
-installing from `constraints.txt`. None of it needs Snowflake/Groq/Redis/Weaviate
-— the demos are the only things that touch live services.
+CI (`.github/workflows/ci.yml`) runs all of the above on every push/PR, installing
+from `constraints.txt`. None of it needs Snowflake/Groq/Redis/Weaviate — the demos
+are the only things that touch live services.
 
-### Demos (require live infra + credentials; exercise real services)
-```bash
-python -m fraud_platform.agents.single_agent.run_demo   # Phase 3 ReAct loop
-python -m fraud_platform.agents.multi_agent.run_demo    # Phase 4 orchestration
-python -m fraud_platform.governance.run_demo            # Phase 5 decide->tier->persist->review
-python -m fraud_platform.observability.eval_runner      # Phase 6 eval + LLM judge
-streamlit run fraud_platform/bi_dashboard/streamlit_app.py   # Phase 7 BI dashboard
-```
-The demos and `eval_runner` intentionally hit real Redis/Snowflake/Weaviate/Groq
-— they are not mocked. The unit test suite (`pytest`) needs none of that.
+---
 
-### Pipeline (streaming)
-```bash
-python -m fraud_platform.data_generator.transaction_stream_generator   # produce to Kafka
-python -m fraud_platform.stream_processing.feature_engine              # consume + compute features
-```
+## Honest caveats
 
-### Shutdown
-```bash
-docker compose down           # stop services (keep data)
-docker compose down -v        # stop services and delete volumes (Kafka/Redis/Weaviate data)
-```
+- **Synthetic data, portfolio project** — not a deployed commercial fraud system.
+- **Small eval samples** — as few as a handful of transactions per run; no
+  statistical confidence is established, and the site/docs don't imply otherwise.
+- **Geo hard-rule** — investigated and *meaningfully improved* (over-flagging cut
+  from ~44% toward ~26%), **not** declared fully solved. See
+  [`GEO_FLAGGING_INVESTIGATION.md`](GEO_FLAGGING_INVESTIGATION.md).
+- **Not everything an autonomous agent reported as "done" survived scrutiny** —
+  several rounds needed correction after independent verification. That process is
+  documented deliberately in [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md), not hidden.
+
+---
 
 ## Notes
-- `constraints.txt` is the locked dependency resolution (`pip freeze`); use it
-  with `-c` for reproducible installs.
+- `constraints.txt` is the locked dependency resolution; use it with `-c` for
+  reproducible installs.
 - Snowflake roles are least-privilege per path: BI → `BI_ROLE`, agents →
-  `AGENT_ROLE`, pipeline → `PIPELINE_ROLE`, migrations → admin. No application
-  path defaults to ACCOUNTADMIN.
+  `AGENT_ROLE`, pipeline → `PIPELINE_ROLE`, migrations → admin. No application path
+  defaults to ACCOUNTADMIN.
+- Rebuilding on a fresh Snowflake account is documented in
+  [`CREDENTIAL_MIGRATION.md`](CREDENTIAL_MIGRATION.md).
