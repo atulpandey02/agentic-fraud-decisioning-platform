@@ -18,7 +18,7 @@ locally on Docker with synthetic data.
 > that contradicted an approval, and the metrics that lied. Companion pages:
 > `docs/phases.html` (what/why per phase), `docs/stack.html` (each tool's role),
 > `docs/architecture.html` (the LangGraph graphs, clickable). Narrative source of
-> truth: [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md).
+> truth: [`PROJECT_NARRATIVE.md`](docs/PROJECT_NARRATIVE.md).
 > View locally: `python3 -m http.server 8710 --directory docs`.
 
 > **Scope & honesty:** this is a learning / portfolio project on **synthetic data**,
@@ -108,7 +108,7 @@ questions over the decision log.
 | **Streamlit** | The BI dashboard UI |
 | **Docker Compose** | Local orchestration of Kafka, Spark, Redis, Weaviate |
 
-Selected design decisions (rationale in [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md)):
+Selected design decisions (rationale in [`PROJECT_NARRATIVE.md`](docs/PROJECT_NARRATIVE.md)):
 **ReAct** over Plan-and-Execute/Reflection (tool count varies per transaction);
 **LangGraph** over CrewAI (first-class cycles + node-level human-in-the-loop
 interrupts); **Weaviate** over Pinecone (native score fusion); A2A protocol and a
@@ -134,9 +134,9 @@ The code is one installable package, `fraud_platform`.
 
 Config is one typed, validated object: `fraud_platform.settings.get_settings()`.
 Credentials come from `.env` at the repo root (git-ignored). See
-[`DATA_GOVERNANCE.md`](DATA_GOVERNANCE.md) for the access/redaction/retention policy
-and [`GEO_FLAGGING_INVESTIGATION.md`](GEO_FLAGGING_INVESTIGATION.md) /
-[`PATTERN_ID_INVESTIGATION.md`](PATTERN_ID_INVESTIGATION.md) for the scoring/accuracy
+[`DATA_GOVERNANCE.md`](docs/DATA_GOVERNANCE.md) for the access/redaction/retention policy
+and [`GEO_FLAGGING_INVESTIGATION.md`](docs/GEO_FLAGGING_INVESTIGATION.md) /
+[`PATTERN_ID_INVESTIGATION.md`](docs/PATTERN_ID_INVESTIGATION.md) for the scoring/accuracy
 analyses.
 
 ---
@@ -232,10 +232,10 @@ are the only things that touch live services.
   statistical confidence is established, and the site/docs don't imply otherwise.
 - **Geo hard-rule** — investigated and *meaningfully improved* (over-flagging cut
   from ~44% toward ~26%), **not** declared fully solved. See
-  [`GEO_FLAGGING_INVESTIGATION.md`](GEO_FLAGGING_INVESTIGATION.md).
+  [`GEO_FLAGGING_INVESTIGATION.md`](docs/GEO_FLAGGING_INVESTIGATION.md).
 - **Not everything an autonomous agent reported as "done" survived scrutiny** —
   several rounds needed correction after independent verification. That process is
-  documented deliberately in [`PROJECT_NARRATIVE.md`](PROJECT_NARRATIVE.md), not hidden.
+  documented deliberately in [`PROJECT_NARRATIVE.md`](docs/PROJECT_NARRATIVE.md), not hidden.
 
 ---
 
@@ -246,4 +246,4 @@ are the only things that touch live services.
   `AGENT_ROLE`, pipeline → `PIPELINE_ROLE`, migrations → admin. No application path
   defaults to ACCOUNTADMIN.
 - Rebuilding on a fresh Snowflake account is documented in
-  [`CREDENTIAL_MIGRATION.md`](CREDENTIAL_MIGRATION.md).
+  [`CREDENTIAL_MIGRATION.md`](docs/CREDENTIAL_MIGRATION.md).
