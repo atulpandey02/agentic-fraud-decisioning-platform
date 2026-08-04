@@ -245,5 +245,3 @@ are the only things that touch live services.
 - Snowflake roles are least-privilege per path: BI → `BI_ROLE`, agents →
   `AGENT_ROLE`, pipeline → `PIPELINE_ROLE`, migrations → admin. No application path
   defaults to ACCOUNTADMIN.
-- Rebuilding on a fresh Snowflake account is documented in
-  [`CREDENTIAL_MIGRATION.md`](docs/CREDENTIAL_MIGRATION.md).

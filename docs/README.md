@@ -57,7 +57,3 @@ All project documentation lives here; the root keeps only `README.md`.
 **Investigations**
 - [`GEO_FLAGGING_INVESTIGATION.md`](GEO_FLAGGING_INVESTIGATION.md) — geo over-flagging root cause + fix
 - [`PATTERN_ID_INVESTIGATION.md`](PATTERN_ID_INVESTIGATION.md) — fraud-pattern identification gap + fix
-
-**Build & migration reports**
-- [`BUILD_REPORT.md`](BUILD_REPORT.md) — the interactive-site build rounds
-- [`CREDENTIAL_MIGRATION.md`](CREDENTIAL_MIGRATION.md) — rebuild on a fresh Snowflake account
