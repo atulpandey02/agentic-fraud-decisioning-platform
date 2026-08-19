@@ -65,8 +65,12 @@ ALLOWED_TRANSITIONS: dict[WorkflowState, set[WorkflowState]] = {
     WorkflowState.READY: {WorkflowState.RUNNING},
     WorkflowState.RUNNING: {WorkflowState.COMPLETED, WorkflowState.FAILED, WorkflowState.PAUSED},
     WorkflowState.PAUSED: {WorkflowState.RUNNING, WorkflowState.FAILED},
-    WorkflowState.COMPLETED: set(),
-    WorkflowState.FAILED: set(),
+    # A workflow is a reusable AUTOMATION, not a one-shot job: an event-driven
+    # workflow must re-fire on the next event. So COMPLETED/FAILED can be
+    # RE-ARMED back to READY (a fresh workflow_run tracks each individual run).
+    # There is still no COMPLETED->RUNNING jump — you always pass through READY.
+    WorkflowState.COMPLETED: {WorkflowState.READY},
+    WorkflowState.FAILED: {WorkflowState.READY},
     WorkflowState.REJECTED: set(),
 }
 
@@ -165,6 +169,15 @@ class WorkflowStore:
         self._conn.execute(
             "UPDATE workflows SET plan_json = ?, updated_at = ? WHERE id = ?",
             (plan_json, _now(), workflow_id),
+        )
+        self._conn.commit()
+
+    def set_trigger(self, workflow_id: str, trigger: Optional[str]) -> None:
+        """Record the event type that fires this workflow (the planner
+        derives it), so workflows_for_trigger() can match incoming events."""
+        self._conn.execute(
+            "UPDATE workflows SET trigger = ?, updated_at = ? WHERE id = ?",
+            (trigger, _now(), workflow_id),
         )
         self._conn.commit()
 

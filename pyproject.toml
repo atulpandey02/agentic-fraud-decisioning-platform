@@ -69,6 +69,14 @@ bi = [
     "plotly==5.20.0",
     "sqlglot==25.34.0",
 ]
+# Workflow engine (natural-language automation layer). FastAPI serves the
+# API; uvicorn runs it; apscheduler is the OPTIONAL cron poller for scheduled
+# triggers (manual POST /events/{type} is enough for the demo).
+workflow = [
+    "fastapi>=0.110,<1",
+    "uvicorn>=0.29,<1",
+    "apscheduler>=3.10,<4",
+]
 dev = [
     "pytest==8.3.4",
     "ruff==0.8.4",

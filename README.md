@@ -225,6 +225,58 @@ are the only things that touch live services.
 
 ---
 
+## Workflow engine (natural-language automation)
+
+`fraud_platform.workflow_engine` is a vendor-facing automation layer on top of the
+platform: a fraud-ops user describes an automation in plain English, and the system
+checks feasibility, decomposes it into an ordered plan, executes each step through a
+tool registry, persists workflow state, and reports results. The pattern is
+**plan-and-execute** — deliberately the *third* agent pattern next to the ReAct
+single agent (interleaved think/act) and the supervisor multi-agent (dynamic
+routing). The whole plan is produced up front and shown before a single step runs —
+the transparency equivalent of the BI page's "SQL always shown."
+
+### Guardrails
+- Plans can only reference **registered** tools; an unknown tool is a **feasibility
+  failure caught in code**, not a prompt hope.
+- All data tools are **read-only**; the NL2SQL output is re-validated as SELECT-only.
+- NOTIFY connectors write to an **auditable outbox** (or a real Slack webhook if one
+  is configured).
+- The approval gate is a **state-machine transition**, not a prompt instruction —
+  the same "invariants from code, judgment from models" principle as
+  `governance/policy_framework.py`.
+- **Every step is persisted before the next begins** (audit trail), and execution
+  **stops on the first failure** — no fail-open.
+
+### Honest scope (what's simulated)
+- **Webhooks are simulated** — `POST /events/{event_type}` (+ an optional cron
+  poller) stands in for real payment webhooks. Production = Kafka topic or provider
+  webhook.
+- **The tool registry is small but real** — search + metadata + a single guarded
+  execute. At ~6 tools a static binding would also be defensible; the interface is
+  built for the scale-up, and the code says so.
+- **Slack/email are demo connectors** — Slack posts to a real incoming-webhook URL
+  only if `SLACK_WEBHOOK_URL` is set, otherwise the **outbox row is the artifact**;
+  email is outbox-only. No OAuth token lifecycle — the named production gap.
+- **Persistence is SQLite** (single file, zero infra). The state machine is real;
+  production would be Postgres/Snowflake.
+
+### Run it
+```bash
+pip install -e ".[workflow]"                                   # fastapi/uvicorn/apscheduler
+python -m fraud_platform.workflow_engine.run_demo --mock       # end-to-end CLI, no infra
+uvicorn fraud_platform.workflow_engine.api:app --port 8000     # the API
+streamlit run fraud_platform/workflow_engine/streamlit_app.py  # the Workflows page
+```
+
+The demo shows both moments: a valid automation ("after every payment capture, if the
+user has 2+ BLOCK decisions in 24h, send a Slack message with their history") planned,
+checked feasible, fired via a simulated event, with the outbox payload shown — and the
+refusal ("delete all BLOCK decisions") which the planner + feasibility check **reject**,
+because no destructive tool exists. That refusal *is* the guardrail demo.
+
+---
+
 ## Honest caveats
 
 - **Synthetic data, portfolio project** — not a deployed commercial fraud system.
