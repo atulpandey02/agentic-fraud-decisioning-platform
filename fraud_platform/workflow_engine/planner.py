@@ -44,6 +44,13 @@ class PlanStep(BaseModel):
                     "step's result) or '$trigger.field' (the event payload).",
     )
     rationale: str = Field(description="one sentence: why this step, here")
+    when: Optional[str] = Field(
+        default=None,
+        description="optional guard condition, evaluated in CODE (not by you). "
+                    "A single comparison '$ref OP value', e.g. '$step_1.count >= 2'. "
+                    "The step runs only if it is true; otherwise it is SKIPPED. "
+                    "Use this for the 'if ...' part of a request.",
+    )
 
 
 class WorkflowPlan(BaseModel):
@@ -84,6 +91,13 @@ HARD RULES:
    whenever the request is a simple countable condition (e.g. "N or more BLOCK
    decisions in H hours"). Reserve 'query_decisions' for open-ended questions.
 4. Keep plans minimal — only the steps needed to achieve the goal.
+5. When the request is conditional ("... IF the user has 2+ BLOCKs, THEN send
+   ..."), do NOT bake the decision into a step's presence. Emit the check as
+   its own step, and put a `when` guard on every step that should only run if
+   the condition holds — e.g. the notify step gets when='$step_1.count >= 2'.
+   `when` is a single comparison evaluated in code; the steps it guards are
+   SKIPPED (not run) when it is false. This keeps the IF out of your hands and
+   in deterministic code.
 
 Set the trigger field if the request is event-driven ("after every payment
 capture ..."), otherwise null."""

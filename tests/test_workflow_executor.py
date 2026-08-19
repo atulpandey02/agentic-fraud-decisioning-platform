@@ -36,8 +36,10 @@ class SlackArgs(BaseModel):
 def _fixture(explode_at_notify=False):
     store = WorkflowStore(db_path=":memory:")
     r = ToolRegistry()
+    # count is user-dependent so a "safe" user is below the >=2 threshold
     r.register(ToolSpec("count", "count blocks", CountArgs, ANALYZE,
-                        execute=lambda user_id, decision, hours=24: {"count": 3, "user_id": user_id}))
+                        execute=lambda user_id, decision, hours=24:
+                            {"count": 1 if "safe" in user_id.lower() else 3, "user_id": user_id}))
     r.register(ToolSpec("history", "user history", UserArgs, READ_DATA,
                         execute=lambda user_id: {"summary": f"history for {user_id}"}))
     if explode_at_notify:
@@ -116,3 +118,60 @@ class TestExecutorFailure:
         # missing trigger field by passing None rather than crashing the harness.
         assert result.status in ("COMPLETED", "FAILED")
         store.close()
+
+
+def _guarded_plan():
+    """The demo plan WITH conditions: steps 2 and 3 only run if count >= 2."""
+    return WorkflowPlan(goal="notify on repeat blocks", trigger="payment.captured", steps=[
+        PlanStep(step_number=1, tool_name="count",
+                 args={"user_id": "$trigger.user_id", "decision": "BLOCK", "hours": 24},
+                 rationale="count"),
+        PlanStep(step_number=2, tool_name="history",
+                 args={"user_id": "$trigger.user_id"}, when="$step_1.count >= 2",
+                 rationale="history if condition holds"),
+        PlanStep(step_number=3, tool_name="notify",
+                 args={"channel": "#fraud-ops", "text": "$step_2.summary"},
+                 when="$step_1.count >= 2", rationale="notify if condition holds"),
+    ])
+
+
+class TestExecutorConditions:
+    def test_guard_true_runs_all_steps(self):
+        store, ex = _fixture()
+        wid = _ready_workflow(store)
+        result = ex.execute(wid, _guarded_plan(), trigger_payload={"user_id": "u42"})  # count=3
+        assert result.status == "COMPLETED"
+        assert [o.status for o in result.steps] == ["ok", "ok", "ok"]
+        assert len(store.outbox()) == 1
+
+    def test_guard_false_skips_downstream_and_leaves_outbox_empty(self):
+        # THE important test: count = 1 -> steps 2 and 3 SKIPPED, nothing sent.
+        store, ex = _fixture()
+        wid = _ready_workflow(store)
+        result = ex.execute(wid, _guarded_plan(), trigger_payload={"user_id": "safe-user"})  # count=1
+        assert result.status == "COMPLETED"          # a skip is NOT a failure
+        assert [o.status for o in result.steps] == ["ok", "skipped", "skipped"]
+        assert "guard false" in result.steps[1].reason
+        # step 3 was skipped because its guard is false AND its input ($step_2)
+        # was skipped — either way it must not run
+        assert store.outbox() == []                  # the guard held; nothing delivered
+
+    def test_cascade_skip_when_dependency_skipped(self):
+        # step 2 skipped by its guard; step 3 has NO guard but depends on
+        # $step_2.summary -> it must cascade-skip, not crash or fail-open.
+        store, ex = _fixture()
+        wid = _ready_workflow(store)
+        plan = WorkflowPlan(goal="g", trigger="t", steps=[
+            PlanStep(step_number=1, tool_name="count",
+                     args={"user_id": "$trigger.user_id", "decision": "BLOCK", "hours": 24},
+                     rationale="count"),
+            PlanStep(step_number=2, tool_name="history", args={"user_id": "$trigger.user_id"},
+                     when="$step_1.count >= 2", rationale="guarded"),
+            PlanStep(step_number=3, tool_name="notify",
+                     args={"channel": "#x", "text": "$step_2.summary"}, rationale="depends on 2"),
+        ])
+        result = ex.execute(wid, plan, trigger_payload={"user_id": "safe-user"})  # count=1
+        assert result.status == "COMPLETED"
+        assert [o.status for o in result.steps] == ["ok", "skipped", "skipped"]
+        assert "depends on skipped" in result.steps[2].reason
+        assert store.outbox() == []

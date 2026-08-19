@@ -23,8 +23,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .conditions import compare, parse_condition
 from .feasibility import _REF_RE
-from .planner import WorkflowPlan
+from .planner import WorkflowPlan, PlanStep
 from .registry import ToolRegistry
 from .state import WorkflowState, WorkflowStore
 
@@ -35,9 +36,10 @@ logger = logging.getLogger(__name__)
 class StepOutcome:
     step_number: int
     tool_name: str
-    status: str            # "ok" | "error"
+    status: str            # "ok" | "error" | "skipped"
     result: object = None
     error: Optional[str] = None
+    reason: Optional[str] = None   # why a step was skipped
     latency_ms: int = 0
 
 
@@ -83,6 +85,28 @@ class Executor:
     def _resolve_args(self, args: dict, trigger: dict, results: dict) -> dict:
         return {k: self._resolve_value(v, trigger, results) for k, v in args.items()}
 
+    @staticmethod
+    def _referenced_steps(step: PlanStep) -> set[int]:
+        """The step numbers this step depends on — every $step_N referenced in
+        its args OR its `when` guard. Used for cascade-skip: a step whose input
+        or guard points at a SKIPPED step cannot itself run."""
+        refs: set[int] = set()
+
+        def _add(token: str) -> None:
+            m = _REF_RE.match(token)
+            if m and m.group(1).startswith("step_"):
+                refs.add(int(m.group(2)))
+
+        for v in step.args.values():
+            if isinstance(v, str) and v.startswith("$"):
+                _add(v)
+        if step.when:
+            try:
+                _add(parse_condition(step.when).ref)
+            except ValueError:
+                pass  # a malformed `when` is a feasibility failure, not our concern here
+        return refs
+
     # ---------------------------------------------------------- execution
     def execute(self, workflow_id: str, plan: WorkflowPlan,
                 trigger_payload: Optional[dict] = None) -> RunResult:
@@ -93,10 +117,50 @@ class Executor:
         self._store.transition(workflow_id, WorkflowState.RUNNING)
         run_id = self._store.start_run(workflow_id)
         results: dict[int, object] = {}
+        skipped: set[int] = set()
         outcomes: list[StepOutcome] = []
+
+        def _skip(s: PlanStep, reason: str) -> None:
+            self._store.checkpoint_step(run_id, s.step_number, s.tool_name,
+                                        s.args, {"skipped": reason}, "skipped")
+            outcomes.append(StepOutcome(s.step_number, s.tool_name, "skipped", reason=reason))
+            skipped.add(s.step_number)
+            logger.info("workflow %s step %d (%s) SKIPPED: %s",
+                        workflow_id, s.step_number, s.tool_name, reason)
 
         for step in sorted(plan.steps, key=lambda s: s.step_number):
             started = time.time()
+
+            # (a) cascade skip — an input or guard points at a SKIPPED step, so
+            # this step's data does not exist by design. Skip, don't fail.
+            blocked = self._referenced_steps(step) & skipped
+            if blocked:
+                _skip(step, f"depends on skipped step(s) {sorted(blocked)}")
+                continue
+
+            # (b) guard — evaluate `when` in CODE (never the LLM). False -> SKIP.
+            # This is the fix for straight-line plans running every step: the
+            # 'if' becomes a deterministic gate, not the mere presence of a step.
+            if step.when:
+                try:
+                    cond = parse_condition(step.when)
+                    passed = compare(self._resolve_value(cond.ref, trigger, results),
+                                     cond.op, cond.literal)
+                except Exception as e:  # noqa: BLE001 — a broken guard IS a real error
+                    latency = int((time.time() - started) * 1000)
+                    err = f"guard {step.when!r}: {type(e).__name__}: {e}"
+                    self._store.checkpoint_step(run_id, step.step_number, step.tool_name,
+                                                step.args, {"error": err}, "error")
+                    outcomes.append(StepOutcome(step.step_number, step.tool_name,
+                                                "error", error=err, latency_ms=latency))
+                    self._store.finish_run(run_id, "FAILED")
+                    self._store.transition(workflow_id, WorkflowState.FAILED)
+                    return RunResult(run_id, "FAILED", outcomes, error=err)
+                if not passed:
+                    _skip(step, f"guard false: {step.when}")
+                    continue
+
+            # (c) execute
             try:
                 resolved = self._resolve_args(step.args, trigger, results)
                 result = self._registry.execute(step.tool_name, resolved)

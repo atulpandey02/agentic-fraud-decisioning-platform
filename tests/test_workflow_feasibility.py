@@ -117,3 +117,30 @@ class TestApprovalAndCategory:
                                args={"x": 1}, rationale="x")])
         report = check_plan(plan, r)
         assert not report.ok and any("not permitted" in e for e in report.errors)
+
+
+class TestConditionFeasibility:
+    def test_valid_backward_guard_passes(self):
+        plan = _plan([
+            PlanStep(step_number=1, tool_name="count_recent_decisions",
+                     args={"user_id": "u1", "decision": "BLOCK", "hours": 24}, rationale="x"),
+            PlanStep(step_number=2, tool_name="get_user_history", args={"user_id": "u1"},
+                     when="$step_1.count >= 2", rationale="guarded"),
+        ])
+        assert check_plan(plan, _registry()).ok
+
+    def test_malformed_guard_is_rejected(self):
+        plan = _plan([PlanStep(step_number=1, tool_name="get_user_history",
+                               args={"user_id": "u1"}, when="count >= 2", rationale="x")])
+        report = check_plan(plan, _registry())
+        assert not report.ok and any("malformed condition" in e for e in report.errors)
+
+    def test_forward_reference_guard_is_rejected(self):
+        plan = _plan([
+            PlanStep(step_number=1, tool_name="get_user_history", args={"user_id": "u1"},
+                     when="$step_2.count >= 2", rationale="forward ref in guard"),
+            PlanStep(step_number=2, tool_name="count_recent_decisions",
+                     args={"user_id": "u1", "decision": "BLOCK", "hours": 24}, rationale="x"),
+        ])
+        report = check_plan(plan, _registry())
+        assert not report.ok and any("backward" in e for e in report.errors)

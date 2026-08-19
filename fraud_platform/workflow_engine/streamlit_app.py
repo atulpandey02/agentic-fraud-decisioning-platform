@@ -76,6 +76,8 @@ if st.button("Plan & check feasibility", type="primary"):
         st.warning(f"Needs clarification: {plan.clarification_question}")
     for s in plan.steps:
         st.markdown(f"**{s.step_number}. `{s.tool_name}`** — {s.rationale}")
+        if s.when:
+            st.caption(f"⤷ runs only when `{s.when}` — evaluated in code, not by the model")
         st.code(json.dumps(s.args), language="json")
     if report.ok:
         st.success("FEASIBILITY: PASS" + ("  (requires approval)" if report.requires_approval else ""))
@@ -95,24 +97,35 @@ for wf in wfs:
 
 # ---- fire simulated event ----
 st.subheader("Simulated webhook")
+if mock:
+    st.caption("Tip: in mock mode a `user_id` containing **safe** has count < 2, so the "
+               "guard is false and the notify step is **SKIPPED** — that's the negative "
+               "branch, where the workflow completes but nothing is sent.")
 if st.button(f"Fire  payment.captured  {{user_id: {event_user!r}}}"):
+    from fraud_platform.workflow_engine.planner import WorkflowPlan
+    from fraud_platform.workflow_engine.state import WorkflowState
     matched = engine.store.workflows_for_trigger("payment.captured")
     if not matched:
         st.info("No READY workflow is triggered by payment.captured.")
-    from fraud_platform.workflow_engine.state import WorkflowState
     for wf in matched:
-        from fraud_platform.workflow_engine.planner import WorkflowPlan
         plan = WorkflowPlan.model_validate_json(wf["plan_json"])
         if WorkflowState(wf["state"]) in (WorkflowState.COMPLETED, WorkflowState.FAILED,
                                           WorkflowState.FEASIBLE):
             engine.store.transition(wf["id"], WorkflowState.READY)
+        before = len(engine.store.outbox())
         result = engine.executor.execute(wf["id"], plan, trigger_payload={"user_id": event_user})
-        st.write(f"Run **{result.status}** for `{wf['id'][:8]}`")
+        n_ok = sum(1 for o in result.steps if o.status == "ok")
+        n_skip = sum(1 for o in result.steps if o.status == "skipped")
+        st.write(f"Run **{result.status}** for `{wf['id'][:8]}` — {n_ok} ran, {n_skip} skipped")
         st.dataframe([
-            {"step": o.step_number, "tool": o.tool_name, "status": o.status,
-             "ms": o.latency_ms, "result": str(o.result or o.error)[:80]}
+            {"step": o.step_number, "tool": o.tool_name, "status": o.status, "ms": o.latency_ms,
+             "detail": (o.reason if o.status == "skipped"
+                        else str(o.result or o.error or ""))[:90]}
             for o in result.steps
         ], use_container_width=True)
+        new_rows = len(engine.store.outbox()) - before
+        st.caption(f"Outbox: **{new_rows}** new payload(s) this run"
+                   + ("  — the guard held, nothing sent" if new_rows == 0 else ""))
 
 # ---- outbox ----
 st.subheader("Outbox (the exact payloads that would be delivered)")

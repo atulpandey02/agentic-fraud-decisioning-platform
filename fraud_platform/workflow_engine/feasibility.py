@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pydantic import ValidationError
 
 from . import config
+from .conditions import parse_condition
 from .planner import WorkflowPlan
 from .registry import ToolRegistry
 
@@ -119,5 +120,16 @@ def check_plan(plan: WorkflowPlan, registry: ToolRegistry) -> FeasibilityReport:
             first = e.errors()[0]
             errors.append(f"step {step.step_number}: args invalid for {spec.name} "
                           f"({'.'.join(str(x) for x in first['loc'])}: {first['msg']})")
+
+        # Validate the optional `when` guard: it must parse into a single
+        # '$ref OP literal' comparison, and its reference must point BACKWARD
+        # (same rule as arg refs) — a condition on a future step is undecidable.
+        if step.when:
+            try:
+                cond = parse_condition(step.when)
+            except ValueError as e:
+                errors.append(f"step {step.step_number}: {e}")
+            else:
+                _check_ref(cond.ref, step.step_number, step_numbers, errors)
 
     return FeasibilityReport(ok=not errors, errors=errors, requires_approval=requires_approval)

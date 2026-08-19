@@ -61,9 +61,12 @@ class _SlackArgs(BaseModel):
 
 def _mock_registry(store: WorkflowStore) -> ToolRegistry:
     r = ToolRegistry()
+    # Count is user-dependent so the demo can show BOTH branches: a user_id
+    # containing "safe" has 1 BLOCK (guard false -> skip), anyone else has 3.
     r.register(ToolSpec("count_recent_decisions", "deterministically count decisions",
                         _CountArgs, ANALYZE,
-                        execute=lambda user_id, decision, hours=24: {"count": 3, "user_id": user_id}))
+                        execute=lambda user_id, decision, hours=24:
+                            {"count": 1 if "safe" in user_id.lower() else 3, "user_id": user_id}))
     r.register(ToolSpec("get_user_history", "user baseline history", _UserArgs, READ_DATA,
                         execute=lambda user_id: {"summary": f"user {user_id}: 3 BLOCKs, home NYC, HIGH tier"}))
     r.register(ToolSpec("slack_send_message", "send slack", _SlackArgs, NOTIFY,
@@ -90,10 +93,12 @@ class _CannedLLM:
                          rationale="deterministic countable condition"),
                 PlanStep(step_number=2, tool_name="get_user_history",
                          args={"user_id": "$trigger.user_id"},
-                         rationale="gather context for the message"),
+                         when="$step_1.count >= 2",
+                         rationale="gather context only if the condition holds"),
                 PlanStep(step_number=3, tool_name="slack_send_message",
                          args={"channel": "#fraud-ops", "text": "$step_2.summary"},
-                         rationale="notify the team"),
+                         when="$step_1.count >= 2",
+                         rationale="notify only if the condition holds"),
             ],
         )
 
@@ -144,15 +149,30 @@ def run(mock: bool = True, event_user_id: str = "demo-user") -> None:
         else:
             store.transition(wid, WorkflowState.READY)
 
-        print(f"\n[2] Firing simulated event: payment.captured {{user_id: {event_user_id!r}}}")
-        result = executor.execute(wid, plan, trigger_payload={"user_id": event_user_id})
-        print(f"\n  RUN {result.status}")
-        for o in result.steps:
-            body = o.error if o.status == "error" else json.dumps(o.result, default=str)[:80]
-            print(f"    step {o.step_number} {o.tool_name}: {o.status} ({o.latency_ms}ms) {body}")
+        def _show(res):
+            print(f"\n  RUN {res.status}")
+            for o in res.steps:
+                if o.status == "skipped":
+                    body = f"SKIPPED — {o.reason}"
+                elif o.status == "error":
+                    body = o.error
+                else:
+                    body = json.dumps(o.result, default=str)[:80]
+                print(f"    step {o.step_number} {o.tool_name}: {o.status} ({o.latency_ms}ms) {body}")
+
+        # positive branch: a user AT/ABOVE the threshold -> message sent
+        print(f"\n[2] Firing simulated event (count >= 2): payment.captured {{user_id: {event_user_id!r}}}")
+        _show(executor.execute(wid, plan, trigger_payload={"user_id": event_user_id}))
         print("\n  OUTBOX (the exact payload that WOULD be delivered):")
         for row in store.outbox():
             print(f"    [{row['connector']}] {row['payload_json']}")
+
+        # negative branch: SAME workflow, a BELOW-threshold user -> steps SKIPPED
+        print("\n[2b] Firing the SAME workflow for a below-threshold user (count < 2):")
+        store.transition(wid, WorkflowState.READY)   # re-arm COMPLETED -> READY
+        before = len(store.outbox())
+        _show(executor.execute(wid, plan, trigger_payload={"user_id": "safe-" + event_user_id}))
+        print(f"  OUTBOX unchanged: {len(store.outbox())} row(s) (was {before}) — the guard held, nothing sent")
 
     # ---- 2. the refusal (guardrail demo) ----
     print(f"\n[3] Instruction: {REFUSAL_INSTRUCTION}")
