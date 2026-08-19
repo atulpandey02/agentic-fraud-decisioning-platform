@@ -26,6 +26,19 @@ from fraud_platform.workflow_engine.scheduler import (
 )
 from fraud_platform.workflow_engine.state import WorkflowState, WorkflowStore
 
+import importlib.util
+
+import pytest
+
+# Firing a schedule builds a real APScheduler cron trigger; skip the whole
+# module when the [workflow] extra (apscheduler) isn't installed — CI's base
+# test env doesn't have it. Importing the modules above is safe (apscheduler
+# is imported lazily inside the scheduler); only running needs it.
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec("apscheduler") is None,
+    reason="scheduled execution needs the [workflow] extra (apscheduler)",
+)
+
 
 class _ReportArgs(BaseModel):
     report: str = Field(description="x")

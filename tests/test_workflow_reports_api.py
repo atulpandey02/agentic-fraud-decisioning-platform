@@ -8,9 +8,16 @@
 # next_run is still computed from the cron trigger.
 # =============================================================
 
-from fastapi.testclient import TestClient
+import pytest
 
-from fraud_platform.workflow_engine.api import build_engine, create_app
+# The [workflow] extra (not installed in CI's base test env) provides these;
+# skip the whole module cleanly when they're absent, same as test_workflow_api.
+pytest.importorskip("fastapi")
+pytest.importorskip("apscheduler")   # the schedule endpoints build cron triggers
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from fraud_platform.workflow_engine.api import build_engine, create_app  # noqa: E402
 
 
 def _client():

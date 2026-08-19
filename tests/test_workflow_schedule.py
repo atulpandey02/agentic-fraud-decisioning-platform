@@ -66,7 +66,10 @@ class TestScheduleValidation:
 class TestCronTrigger:
     def test_to_cron_trigger_builds_and_computes_next_fire(self):
         # Exercises the real APScheduler CronTrigger: a daily 22:00 NY
-        # schedule must produce a concrete future fire time.
+        # schedule must produce a concrete future fire time. APScheduler
+        # comes from the [workflow] extra, absent in CI's base test env —
+        # skip just this case; the model-validation tests above still run.
+        pytest.importorskip("apscheduler")
         from datetime import datetime
         from zoneinfo import ZoneInfo
 
