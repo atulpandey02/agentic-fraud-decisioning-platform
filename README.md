@@ -9,9 +9,11 @@ workflow engine** over the decision log.
 ![Architecture — stream, decide, govern, automate](docs/architecture.png)
 
 *Interactive version: [`docs/architecture-diagram.html`](docs/architecture-diagram.html)
-· the two green nodes are the focal points (the decision core and the system of
-record); dashed = LLM call; guardrails are enforced in code at the BI surface and the
-workflow engine.*
+· on the right, the decisions store fans out to Agentic BI and the workflow engine —
+which the BI page **feeds** (send / schedule a result) and a **Scheduler** drives on a
+time trigger, delivering to an auditable Outbox. The two green nodes are the focal
+points (the decision core and the system of record); dashed = LLM call; guardrails are
+enforced in code at the BI surface and the workflow engine.*
 
 ---
 
@@ -181,6 +183,26 @@ location.**
 
    ```bash
    python -m fraud_platform.workflow_engine.run_demo --mock   # end-to-end, no infra
+   ```
+
+6. **Ask → deliver → schedule (BI ↔ workflow engine).** The Agentic BI page and the
+   workflow engine are one connected system. Ask a question and get the answer through
+   the guarded NL2SQL pipeline (mode A, no workflow). Then, from the same result,
+   optionally **send it to Slack / email now** (mode B), or **schedule it** — *"every
+   day at 10 PM, send #fraud-ops a fraud performance report"* (mode C). Three
+   separations of responsibility keep the LLM useful without letting it become the
+   authority: NL2SQL answers, the planner turns intent into a plan, the scheduler
+   decides *when*, the executor runs registered tools, connectors deliver. The LLM may
+   **interpret** "10 PM" into a structured schedule, but code validates it (timezone
+   required), converts it to APScheduler, and a recurring report **replays validated
+   SQL** — it is never regenerated per run. Rows never go to Slack raw: a `format_report`
+   step renders a compact Slack summary and a detailed email body. The scheduled demo
+   (offline) shows the whole path — plan, validated SQL, schedule interpretation,
+   feasibility PASS, a simulated trigger, the formatted report, the outbox artifact, and
+   idempotent re-fires — plus a destructive scheduled request that is **REJECTED**:
+
+   ```bash
+   python -m fraud_platform.workflow_engine.run_demo --scheduled --mock
    ```
 
 ---

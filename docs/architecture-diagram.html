@@ -53,8 +53,9 @@
     <desc id="arch-desc">Left to right: a Kafka/Spark streaming pipeline writes a Redis/Snowflake
       feature store; a multi-agent supervisor grounded by Weaviate policy RAG and a Groq LLM makes
       ALLOW/BLOCK/ESCALATE decisions; governance assigns autonomy tiers; decisions and traces land in
-      Snowflake and feed a guarded NL2SQL BI surface and a natural-language workflow engine that emits
-      to an auditable outbox.</desc>
+      Snowflake and feed a guarded NL2SQL BI surface. The BI surface can send or schedule a result
+      through a natural-language workflow engine, which a scheduler also fires on a time trigger,
+      delivering formatted reports to an auditable Slack/email outbox.</desc>
 
     <defs>
       <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
@@ -102,15 +103,21 @@
     <line x1="354" y1="96" x2="354" y2="144" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
     <!-- LLM up into supervisor (dashed = model call) -->
     <line x1="354" y1="300" x2="354" y2="212" stroke="#8fa0b3" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
-    <!-- decisions -> serving (down) -->
-    <line x1="814" y1="206" x2="814" y2="294" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
-    <line x1="814" y1="356" x2="814" y2="424" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- serving: BI feeds the workflow engine; the scheduler fires it; it emits to the outbox -->
+    <!-- Agentic BI -> Workflow engine (send / schedule a result) -->
+    <line x1="1044" y1="206" x2="1044" y2="294" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- Scheduler -> Workflow engine (time trigger) -->
+    <line x1="898" y1="328" x2="954" y2="328" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- Workflow engine -> Outbox (deliver) -->
+    <line x1="1044" y1="356" x2="1044" y2="424" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
 
     <!-- arrow labels -->
     <text x="366" y="124" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">policy</text>
     <text x="366" y="262" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">LLM</text>
     <text x="240" y="170" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">flagged</text>
-    <text x="826" y="258" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">events</text>
+    <text x="912" y="170" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">query</text>
+    <text x="1050" y="256" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">send · schedule</text>
+    <text x="926" y="320" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">fires</text>
 
     <!-- ============ NODES ============ -->
     <!-- helper geometry: w=168 h=56, name y=+24, sub y=+41 -->
@@ -167,24 +174,35 @@
       <text x="1044" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Agentic BI</text>
       <text x="1044" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">guarded NL2SQL</text>
     </g>
+    <!-- Scheduler — decides WHEN a stored workflow runs (time trigger) -->
     <g>
       <rect x="730" y="300" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
-      <text x="814" y="324" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Workflow engine</text>
-      <text x="814" y="341" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">plan → check → execute</text>
+      <text x="814" y="324" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Scheduler</text>
+      <text x="814" y="341" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">APScheduler · cron</text>
+    </g>
+    <!-- Workflow engine — plan-and-execute automation -->
+    <g>
+      <rect x="960" y="300" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="1044" y="322" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Workflow engine</text>
+      <text x="1044" y="339" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#8fa0b3">plan · schedule · execute</text>
     </g>
     <g>
-      <rect x="730" y="430" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
-      <text x="814" y="454" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Outbox</text>
-      <text x="814" y="471" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">Slack · email (auditable)</text>
+      <rect x="960" y="430" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="1044" y="454" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Outbox</text>
+      <text x="1044" y="471" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">Slack · email (auditable)</text>
     </g>
   </svg>
 
   <p class="cap">
-    Primary flow runs left→right along the spine: <b>feature store → supervisor → governance →
-    decisions → BI</b>. The two <span class="swatch">green</span> nodes are the focal points — the
-    <b>multi-agent supervisor</b> (the decision core) and the <b>Snowflake decisions store</b> (system
-    of record). Dashed = LLM call. Guardrails are enforced in code at two boundaries: the BI surface
-    (SELECT-only AST guard) and the workflow engine (feasibility + deterministic step conditions).
+    The spine runs left→right: <b>feature store → supervisor → governance → decisions</b>. On the
+    right, the decisions store fans out to two guarded surfaces — <b>Agentic BI</b> (ask in English)
+    and the <b>workflow engine</b>, which the BI page feeds (<b>send / schedule</b> a result) and a
+    <b>Scheduler</b> drives on a time trigger; every recurring report replays validated SQL and lands
+    in an auditable <b>Outbox</b>. The two <span class="swatch">green</span> nodes are the focal points
+    — the <b>multi-agent supervisor</b> (the decision core) and the <b>Snowflake decisions store</b>
+    (system of record). Dashed = LLM call. Guardrails are enforced in code at the BI surface
+    (SELECT-only AST guard) and the workflow engine (feasibility + deterministic conditions +
+    validated-SQL replay).
   </p>
 </div>
 </body>
