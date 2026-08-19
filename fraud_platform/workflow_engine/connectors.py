@@ -41,13 +41,19 @@ def make_slack_send(write_outbox: OutboxWriter,
         payload = {"channel": channel, "text": text}
         write_outbox("slack", payload)          # always — the demo artifact
         delivered = False
-        if url:
+        # Only ever POST over http(s). This blocks the file:/ and custom-scheme
+        # concern B310 warns about: a misconfigured SLACK_WEBHOOK_URL cannot be
+        # coerced into opening a local file — the URL is operator config, but we
+        # still refuse any non-web scheme before urlopen sees it.
+        if url and url.lower().startswith(("https://", "http://")):
             try:
                 req = urllib.request.Request(
                     url, data=json.dumps(payload).encode(),
                     headers={"Content-Type": "application/json"},
                 )
-                urllib.request.urlopen(req, timeout=5)
+                # nosec B310 — scheme is asserted http(s) directly above; the URL
+                # is operator-provided config, never user- or LLM-supplied.
+                urllib.request.urlopen(req, timeout=5)  # nosec B310
                 delivered = True
             except Exception as e:  # noqa: BLE001 — delivery is best-effort
                 logger.warning("Slack webhook POST failed (outbox row stands): %s", e)
