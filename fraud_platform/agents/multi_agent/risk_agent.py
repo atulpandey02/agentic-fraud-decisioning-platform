@@ -73,7 +73,7 @@ class RiskAgent:
     name = "risk_agent"
 
     def __init__(self, llm, get_user_history_tool):
-        self._llm = llm.with_structured_output(RiskAssessment)
+        self._llm = llm.with_structured_output(RiskAssessment, method="json_schema")
         self._get_history = get_user_history_tool
 
     def run(self, state: MultiAgentState) -> dict:

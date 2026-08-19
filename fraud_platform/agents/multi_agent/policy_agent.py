@@ -60,7 +60,7 @@ class PolicyAgent:
     name = "policy_agent"
 
     def __init__(self, llm, get_policy_context_tool):
-        self._llm = llm.with_structured_output(PolicyGuidance)
+        self._llm = llm.with_structured_output(PolicyGuidance, method="json_schema")
         self._get_policy = get_policy_context_tool
 
     def run(self, state: MultiAgentState) -> dict:

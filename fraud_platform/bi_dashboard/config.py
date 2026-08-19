@@ -67,7 +67,7 @@ BI_FORBIDDEN_ROLES = {"ACCOUNTADMIN", "ORGADMIN", "SECURITYADMIN", "SYSADMIN"}
 # text-to-text task the 70B model handles well; introducing a
 # second model family here would double the "model deprecated"
 # maintenance surface for no quality gain at this scale.
-BI_LLM_MODEL = os.getenv("BI_LLM_MODEL", os.getenv("AGENT_LLM_MODEL", "llama-3.3-70b-versatile"))
+BI_LLM_MODEL = os.getenv("BI_LLM_MODEL", os.getenv("AGENT_LLM_MODEL", "openai/gpt-oss-120b"))
 BI_LLM_TEMPERATURE = 0.0   # SQL generation wants determinism; there are
                            # no tool calls in this path, so the Phase 3
                            # zero-temperature caveat doesn't apply

@@ -74,7 +74,7 @@ class DecisionAgent:
     name = "decision_agent"
 
     def __init__(self, llm):
-        self._llm = llm.with_structured_output(DecisionOutput)
+        self._llm = llm.with_structured_output(DecisionOutput, method="json_schema")
 
     def run(self, state: MultiAgentState) -> dict:
         risk_section = (

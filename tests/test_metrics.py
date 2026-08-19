@@ -58,6 +58,55 @@ class TestPerPattern:
         assert pp["caught"] == 2            # BLOCK + ESCALATE, not the ALLOW
         assert pp["recall"] == 2 / 3
         assert pp["pattern_id_accuracy"] == 2 / 3
+        # Backward-compat: with no elevated_patterns, detection falls back to
+        # the final label, so detection == primary-id here.
+        assert pp["detection_rate"] == 2 / 3
+        assert pp["missed"] == 1           # the ALLOW row named NONE
+
+
+class TestPatternDetection:
+    """The pattern-eval fix: detection (surfaced anywhere) must be kept
+    distinct from primary-label id (the final single label matched)."""
+
+    def test_detected_but_mislabeled_is_not_a_miss(self):
+        # The real bug: NEW_DEVICE fraud where the feature_agent elevated BOTH
+        # AMOUNT_ANOMALY and NEW_DEVICE, but the final label said AMOUNT_ANOMALY.
+        # Old code scored this pattern_id=0 (total miss). It should now count as
+        # detected + mislabeled, NOT missed.
+        ds = [_d("BLOCK", True, truth_pattern="NEW_DEVICE",
+                 agent_pattern="AMOUNT_ANOMALY",
+                 elevated_patterns=["AMOUNT_ANOMALY", "NEW_DEVICE"])]
+        b = metrics.per_pattern_recall(ds)["NEW_DEVICE"]
+        assert b["detected"] == 1
+        assert b["mislabeled"] == 1
+        assert b["missed"] == 0
+        assert b["primary_correct"] == 0
+        assert b["detection_rate"] == 1.0
+        assert b["pattern_id_accuracy"] == 0.0   # strict number stays honest
+
+    def test_completely_missed_when_true_pattern_never_surfaced(self):
+        ds = [_d("BLOCK", True, truth_pattern="GEO_JUMP",
+                 agent_pattern="AMOUNT_ANOMALY",
+                 elevated_patterns=["AMOUNT_ANOMALY"])]
+        b = metrics.per_pattern_recall(ds)["GEO_JUMP"]
+        assert b["detected"] == 0 and b["missed"] == 1 and b["mislabeled"] == 0
+        assert b["detection_rate"] == 0.0
+
+    def test_primary_correct_counts_as_detected_not_mislabeled(self):
+        ds = [_d("BLOCK", True, truth_pattern="VELOCITY_SPIKE",
+                 agent_pattern="VELOCITY_SPIKE",
+                 elevated_patterns=["VELOCITY_SPIKE"])]
+        b = metrics.per_pattern_recall(ds)["VELOCITY_SPIKE"]
+        assert (b["detected"], b["primary_correct"], b["mislabeled"], b["missed"]) == (1, 1, 0, 0)
+        assert b["detection_rate"] == 1.0 and b["pattern_id_accuracy"] == 1.0
+
+    def test_elevated_patterns_accepts_comma_string(self):
+        # elevated_patterns may arrive as a comma-joined string, not a list.
+        ds = [_d("BLOCK", True, truth_pattern="NEW_DEVICE",
+                 agent_pattern="AMOUNT_ANOMALY",
+                 elevated_patterns="AMOUNT_ANOMALY, NEW_DEVICE")]
+        b = metrics.per_pattern_recall(ds)["NEW_DEVICE"]
+        assert b["detected"] == 1 and b["mislabeled"] == 1 and b["missed"] == 0
 
 
 class TestCalibration:

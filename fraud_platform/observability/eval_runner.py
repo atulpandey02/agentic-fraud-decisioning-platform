@@ -30,11 +30,12 @@
 
 import time
 import logging
+from typing import Optional
 
 import snowflake.connector
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_groq import ChatGroq
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from . import config
 from . import metrics
@@ -68,7 +69,12 @@ you judge whether the REASONING is sound:
   inconvenient ones?
 
 Score 0.0-1.0. Reserve scores above 0.9 for reasoning that quotes specific
-numbers and policy thresholds accurately. Penalize fabricated facts hard."""
+numbers and policy thresholds accurately. Penalize fabricated facts hard.
+
+Respond with ONLY a single JSON object — no prose, no markdown fences — with
+exactly these keys:
+  "score": a number from 0.0 to 1.0 (reasoning quality),
+  "notes": a string of 1-3 sentences on what was strong or weak, specifically."""
 
 
 class JudgeVerdict(BaseModel):
@@ -88,11 +94,18 @@ class EvalRunner:
         self._framework = GovernancePolicyFramework()
         self._hitl = HITLHandler()
         self._trace_writer = AgentTraceWriter()
+        # JSON-object mode + LOCAL Pydantic validation (deliberately NOT Groq
+        # strict json_schema). The judge runs on Qwen, a reasoning model that
+        # emits a plain JSON object far more reliably than a strict-schema tool
+        # call; we parse and validate that JSON against JudgeVerdict ourselves
+        # in judge_reasoning(), so a malformed/failed verdict is a caught,
+        # non-fatal judge failure — the objective ground-truth metrics still
+        # count and the batch continues.
         self._judge = ChatGroq(
             model=config.JUDGE_MODEL_NAME,
             temperature=config.JUDGE_TEMPERATURE,
             api_key=config.GROQ_API_KEY,
-        ).with_structured_output(JudgeVerdict)
+        ).bind(response_format={"type": "json_object"})
 
     # ----------------------------------------------------------
     # SAMPLING
@@ -170,25 +183,48 @@ class EvalRunner:
             return None
         return (decision == "BLOCK") == is_fraud
 
-    def judge_reasoning(self, result: dict) -> JudgeVerdict:
-        return self._judge.invoke([
-            SystemMessage(content=JUDGE_SYSTEM_PROMPT),
-            HumanMessage(content=(
-                f"Evidence gathered by the team:\n"
-                f"- Feature findings: {result.get('feature_findings')}\n"
-                f"- Elevated patterns: {result.get('elevated_patterns')}\n"
-                f"- Risk assessment: {result.get('risk_assessment') or '(risk specialist skipped)'}\n"
-                f"- Policy guidance: {result.get('policy_guidance')}\n\n"
-                f"Final decision: {result['decision']} "
-                f"(confidence {result['confidence_score']}, pattern {result['identified_pattern']})\n\n"
-                f"Reasoning to evaluate:\n{result['reasoning_text']}"
-            )),
-        ])
+    def judge_reasoning(self, result: dict) -> Optional[JudgeVerdict]:
+        """Score the reasoning with the independent Qwen judge in JSON-object
+        mode, then validate the returned JSON against JudgeVerdict LOCALLY.
 
-    def record_scores(self, decision_id: str, correct, verdict: JudgeVerdict) -> None:
+        Returns None on ANY judge failure — an API/rate-limit error, non-JSON
+        output, or a payload that fails Pydantic validation. A None here is
+        deliberately non-fatal: the caller records the OBJECTIVE ground-truth
+        outcome regardless and the batch keeps going. The judge is a
+        best-effort reasoning-quality annotation, never a gate on the
+        ground-truth metrics."""
+        try:
+            msg = self._judge.invoke([
+                SystemMessage(content=JUDGE_SYSTEM_PROMPT),
+                HumanMessage(content=(
+                    f"Evidence gathered by the team:\n"
+                    f"- Feature findings: {result.get('feature_findings')}\n"
+                    f"- Elevated patterns: {result.get('elevated_patterns')}\n"
+                    f"- Risk assessment: {result.get('risk_assessment') or '(risk specialist skipped)'}\n"
+                    f"- Policy guidance: {result.get('policy_guidance')}\n\n"
+                    f"Final decision: {result['decision']} "
+                    f"(confidence {result['confidence_score']}, pattern {result['identified_pattern']})\n\n"
+                    f"Reasoning to evaluate:\n{result['reasoning_text']}"
+                )),
+            ])
+            # Local Pydantic validation of the JSON object the model returned.
+            return JudgeVerdict.model_validate_json(msg.content)
+        except (ValidationError, ValueError, KeyError) as e:
+            logger.warning("Judge produced an invalid verdict (non-fatal): %s",
+                           str(e).splitlines()[0][:120])
+            return None
+        except Exception as e:  # noqa: BLE001 — API/rate-limit etc. must not abort
+            logger.warning("Judge call failed (non-fatal, objective outcome still counts): %s",
+                           str(e).splitlines()[0][:120])
+            return None
+
+    def record_scores(self, decision_id: str, correct, judge_score, judge_notes) -> None:
         """UPDATE the eval columns on the already-persisted decision
         row — scoring is an annotation on the decision, not a new
-        fact table (the Day 1 schema made this call already)."""
+        fact table (the Day 1 schema made this call already). judge_score /
+        judge_notes may be None when the judge failed — the objective
+        eval_correct is written either way (NULL judge score is expected and
+        the column is nullable)."""
         conn = self._hitl._get_connection()
         cursor = conn.cursor()
         try:
@@ -203,8 +239,8 @@ class EvalRunner:
                 """,
                 {
                     "correct": correct,
-                    "score": verdict.score,
-                    "notes": verdict.notes,
+                    "score": judge_score,
+                    "notes": judge_notes,
                     "decision_id": decision_id,
                 },
             )
@@ -261,20 +297,30 @@ class EvalRunner:
             self._trace_writer.write_trace(decision_id, result["messages"])
 
             correct = self.outcome_correct(result["decision"], is_fraud)
+            # Judge is best-effort and non-fatal: a None verdict (API/rate-limit
+            # error or invalid JSON) still records the objective outcome and the
+            # batch continues. judge_score is then None → excluded from judge
+            # aggregates, never counted as a 0.
             verdict = self.judge_reasoning(result)
-            self.record_scores(decision_id, correct, verdict)
+            judge_score = verdict.score if verdict else None
+            judge_notes = verdict.notes if verdict else "(judge unavailable — objective outcome recorded)"
+            self.record_scores(decision_id, correct, judge_score, judge_notes)
 
             results.append({
                 "decision": result["decision"],
                 "pattern": result["identified_pattern"] or "NONE",
                 "agent_pattern": result["identified_pattern"] or "NONE",
+                # The feature_agent's full elevated-pattern LIST — not just the
+                # single final label — so the metrics can tell "detected but
+                # mislabeled" apart from "completely missed" (see metrics.py).
+                "elevated_patterns": result.get("elevated_patterns"),
                 "truth_pattern": truth_pattern,
                 "is_fraud": is_fraud,
                 "correct": correct,
                 "confidence_score": result["confidence_score"],
                 "amount": result["amount"],
-                "judge_score": verdict.score,
-                "judge_notes": verdict.notes,
+                "judge_score": judge_score,
+                "judge_notes": judge_notes,
                 "tier": tier,
                 "latency_ms": latency_ms,
             })
@@ -307,23 +353,30 @@ class EvalRunner:
         decided = [r for r in results if r["correct"] is not None]
         escalated = [r for r in results if r["correct"] is None]
         n_correct = sum(1 for r in decided if r["correct"])
-        pattern_hits = sum(1 for r in results if r["pattern"] == r["truth_pattern"])
 
         print("\n" + "=" * 70)
         print("EVALUATION SUMMARY")
         print("=" * 70)
+        judged = [r["judge_score"] for r in results if r["judge_score"] is not None]
+        judge_failures = len(results) - len(judged)
         for r in results:
             mark = "·ESC" if r["correct"] is None else ("  OK" if r["correct"] else "MISS")
+            js = f"{r['judge_score']:.2f}" if r["judge_score"] is not None else "n/a "
             print(f"  [{mark}] {r['decision']:8s} truth={'FRAUD' if r['is_fraud'] else 'legit'}"
                   f"/{r['truth_pattern']:15s} agent_pattern={r['pattern']:15s} "
-                  f"judge={r['judge_score']:.2f} tier={r['tier']}")
+                  f"judge={js} tier={r['tier']}")
         print("-" * 70)
         if decided:
             print(f"Decision accuracy (excl. escalations): {n_correct}/{len(decided)}")
         print(f"Escalation rate:                       {len(escalated)}/{len(results)}")
-        print(f"Pattern identification:                {pattern_hits}/{len(results)}")
-        print(f"Mean judge score:                      "
-              f"{sum(r['judge_score'] for r in results) / len(results):.2f}")
+        # Judge score is averaged over SUCCESSFUL judgements only; failures are
+        # reported separately so a rate-limited judge never drags the mean down
+        # or is silently counted as zero. Objective metrics below are unaffected.
+        if judged:
+            print(f"Mean judge score (of {len(judged)} judged):    "
+                  f"{sum(judged) / len(judged):.2f}")
+        if judge_failures:
+            print(f"Judge failures (non-fatal):            {judge_failures}/{len(results)}")
         print(f"Mean latency:                          "
               f"{sum(r['latency_ms'] for r in results) // len(results)} ms")
 
@@ -343,10 +396,27 @@ class EvalRunner:
         print(f"JUDGE CROSS-CHECK: mean on correct={_fmt(jc['mean_judge_on_correct'])} "
               f"vs incorrect={_fmt(jc['mean_judge_on_incorrect'])} "
               f"(gap={_fmt(jc['agreement_gap'])})")
-        print("PER-PATTERN recall / pattern-id accuracy:")
+        # PATTERN EVALUATION — detection vs. primary-label id, kept distinct.
+        # `detection` credits the true pattern being surfaced anywhere (in the
+        # feature_agent's elevated_patterns or the final label); `primary_id`
+        # is the strict "final label matched" number. A high detection with a
+        # low primary_id means the agent SEES the right pattern but names a
+        # plausible co-pattern — a labeling gap, not a detection failure.
+        print("PER-PATTERN (true-fraud rows) — recall / detection / primary-label id:")
+        tot = {"n": 0, "detected": 0, "primary": 0, "mislabeled": 0, "missed": 0}
         for pat, b in sorted(m["per_pattern"].items()):
             print(f"  {pat:15s} recall={_fmt(b['recall'])} "
-                  f"pattern_id={_fmt(b['pattern_id_accuracy'])} (n={b['n']})")
+                  f"detection={_fmt(b['detection_rate'])} "
+                  f"primary_id={_fmt(b['pattern_id_accuracy'])} "
+                  f"(n={b['n']}, mislabeled={b['mislabeled']}, missed={b['missed']})")
+            tot["n"] += b["n"]; tot["detected"] += b["detected"]
+            tot["primary"] += b["primary_correct"]; tot["mislabeled"] += b["mislabeled"]
+            tot["missed"] += b["missed"]
+        if tot["n"]:
+            print(f"  OVERALL (fraud n={tot['n']}): "
+                  f"detected {tot['detected']}/{tot['n']}  "
+                  f"primary-label-correct {tot['primary']}/{tot['n']}  "
+                  f"mislabeled {tot['mislabeled']}  missed {tot['missed']}")
         print("=" * 70)
         print("All decisions, traces, and scores persisted to DECISIONS.*")
 

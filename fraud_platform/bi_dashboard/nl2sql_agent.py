@@ -117,7 +117,7 @@ class NL2SQLAgent:
             model=config.BI_LLM_MODEL,
             temperature=config.BI_LLM_TEMPERATURE,
             api_key=config.GROQ_API_KEY,
-        ).with_structured_output(GeneratedQuery)
+        ).with_structured_output(GeneratedQuery, method="json_schema")
         # The structural guardrail — injected the allowlist and row
         # cap from config, so this agent doesn't reach into config
         # for policy and the validator stays independently testable.

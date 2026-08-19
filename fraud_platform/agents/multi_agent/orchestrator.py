@@ -131,7 +131,7 @@ class FraudOrchestrator:
             temperature=config.LLM_TEMPERATURE,
             api_key=config.GROQ_API_KEY,
         )
-        self._router_llm = self._llm.with_structured_output(RouteDecision)
+        self._router_llm = self._llm.with_structured_output(RouteDecision, method="json_schema")
 
         self._specialists = {
             "feature_agent": FeatureAgent(self._llm, get_transaction_features),

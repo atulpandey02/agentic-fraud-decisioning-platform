@@ -99,7 +99,7 @@ class FraudDecisioningAgent:
             api_key=config.GROQ_API_KEY,
         )
         self._llm_with_tools = self._llm.bind_tools(ALL_TOOLS)
-        self._llm_structured = self._llm.with_structured_output(DecisionOutput)
+        self._llm_structured = self._llm.with_structured_output(DecisionOutput, method="json_schema")
 
         self._graph = self._build_graph()
 

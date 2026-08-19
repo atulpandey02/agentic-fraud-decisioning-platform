@@ -89,7 +89,7 @@ class FeatureAgent:
     name = "feature_agent"
 
     def __init__(self, llm, get_features_tool):
-        self._llm = llm.with_structured_output(FeatureFindings)
+        self._llm = llm.with_structured_output(FeatureFindings, method="json_schema")
         self._get_features = get_features_tool
 
     def run(self, state: MultiAgentState) -> dict:

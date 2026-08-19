@@ -86,24 +86,82 @@ def escalation_metrics(decisions: List[Dict], cost_per_escalation: float = 1.0) 
     }
 
 
+def _surfaced_patterns(d: Dict) -> set:
+    """The set of fraud patterns the system actually surfaced for a
+    decision: the feature_agent's `elevated_patterns` PLUS the final
+    `agent_pattern` label. Normalizes a list, a comma-joined string, or
+    None into an upper-cased set.
+
+    This is the fix for the pattern-eval bug: the agent frequently DETECTS
+    the true pattern (it appears in `elevated_patterns`) but the final
+    single label names a plausible co-pattern instead — e.g. a high-amount
+    purchase on a new device surfaces both AMOUNT_ANOMALY and NEW_DEVICE but
+    gets labeled AMOUNT_ANOMALY. Comparing only the final label scored that
+    as a total miss; comparing against the surfaced SET credits the
+    detection and separates it from a genuine miss."""
+    raw = d.get("elevated_patterns")
+    if raw is None:
+        surfaced = set()
+    elif isinstance(raw, str):
+        surfaced = {p.strip().upper() for p in raw.split(",") if p.strip()}
+    else:  # list / tuple / set of patterns
+        surfaced = {str(p).strip().upper() for p in raw if str(p).strip()}
+    primary = (d.get("agent_pattern") or "").strip().upper()
+    if primary and primary != "NONE":
+        surfaced.add(primary)
+    return surfaced
+
+
 def per_pattern_recall(decisions: List[Dict]) -> Dict[str, Dict]:
-    """For each true fraud pattern: what fraction did we catch (BLOCK
-    or ESCALATE counts as 'caught' — we didn't wave it through), and
-    how often did the agent name the pattern correctly."""
+    """Per true-fraud pattern, over fraud rows only, four honest measures:
+
+      - recall              : fraction CAUGHT (BLOCK or ESCALATE — not waved
+                              through).
+      - pattern_id_accuracy : fraction where the FINAL label (`agent_pattern`)
+                              matched the true pattern exactly — the STRICT
+                              number (unchanged meaning from before).
+      - detection_rate      : fraction where the true pattern was surfaced
+                              ANYWHERE (in `elevated_patterns` or as the final
+                              label) — the CHARITABLE number that credits a
+                              detected-but-mislabeled pattern.
+      - mislabeled_rate     : detected, but the final label named a different
+                              pattern (usually a plausible co-signal).
+      - missed_rate         : the true pattern was never surfaced at all — the
+                              genuine identification failure.
+
+    detection_rate >= pattern_id_accuracy always; the gap between them is the
+    "caught it but called it something else" rate. Raw counts are kept
+    alongside the rates so a caller can aggregate across patterns."""
     out: Dict[str, Dict] = {}
     for d in decisions:
         if not d["is_fraud"]:
             continue
-        pat = d.get("truth_pattern") or "UNKNOWN"
-        bucket = out.setdefault(pat, {"n": 0, "caught": 0, "pattern_id_correct": 0})
+        pat = (d.get("truth_pattern") or "UNKNOWN").strip().upper()
+        bucket = out.setdefault(pat, {
+            "n": 0, "caught": 0, "primary_correct": 0,
+            "detected": 0, "mislabeled": 0, "missed": 0,
+        })
         bucket["n"] += 1
         if d["decision"] in ("BLOCK", "ESCALATE"):
             bucket["caught"] += 1
-        if (d.get("agent_pattern") or "NONE") == pat:
-            bucket["pattern_id_correct"] += 1
+
+        is_primary = (d.get("agent_pattern") or "NONE").strip().upper() == pat
+        is_detected = pat in _surfaced_patterns(d)
+        if is_primary:
+            bucket["primary_correct"] += 1
+        if is_detected:
+            bucket["detected"] += 1
+            if not is_primary:
+                bucket["mislabeled"] += 1
+        else:
+            bucket["missed"] += 1
+
     for b in out.values():
         b["recall"] = _safe_div(b["caught"], b["n"])
-        b["pattern_id_accuracy"] = _safe_div(b["pattern_id_correct"], b["n"])
+        b["pattern_id_accuracy"] = _safe_div(b["primary_correct"], b["n"])
+        b["detection_rate"] = _safe_div(b["detected"], b["n"])
+        b["mislabeled_rate"] = _safe_div(b["mislabeled"], b["n"])
+        b["missed_rate"] = _safe_div(b["missed"], b["n"])
     return out
 
 

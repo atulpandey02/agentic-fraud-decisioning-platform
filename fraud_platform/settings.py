@@ -85,7 +85,7 @@ class WeaviateSettings(BaseModel):
 
 class LLMSettings(BaseModel):
     groq_api_key: Optional[str] = None
-    agent_model: str = "llama-3.3-70b-versatile"
+    agent_model: str = "openai/gpt-oss-120b"
     langsmith_api_key: Optional[str] = None
     langsmith_project: str = "fraud-decisioning-platform"
 
@@ -155,7 +155,7 @@ class Settings(BaseModel):
             ),
             llm=LLMSettings(
                 groq_api_key=os.getenv("GROQ_API_KEY"),
-                agent_model=os.getenv("AGENT_LLM_MODEL", "llama-3.3-70b-versatile"),
+                agent_model=os.getenv("AGENT_LLM_MODEL", "openai/gpt-oss-120b"),
                 langsmith_api_key=os.getenv("LANGSMITH_API_KEY"),
                 langsmith_project=os.getenv("LANGSMITH_PROJECT", "fraud-decisioning-platform"),
             ),

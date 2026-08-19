@@ -42,13 +42,19 @@ EVAL_STRATIFY = True          # half fraud / half legit. A random draw from
                               # sample would mostly measure false-positive
                               # handling and barely touch true-fraud recall.
 
-# LLM-as-judge reuses the same Groq model as the agents. Honest
-# limitation, documented rather than hidden: a same-family judge
-# can exhibit self-preference bias. In production you'd use a
-# stronger or at least different model family for judging; here
-# the judge's value is the PIPELINE (scores + notes persisted per
-# decision), which is model-swappable via this one constant.
-JUDGE_MODEL_NAME = os.getenv("JUDGE_MODEL", os.getenv("AGENT_LLM_MODEL", "llama-3.3-70b-versatile"))
+# LLM-as-judge runs on a DIFFERENT model family from the agents on purpose:
+# a same-family judge exhibits self-preference bias — its scores would
+# flatter the model that produced the reasoning. The agents run on gpt-oss
+# (OpenAI family); the judge defaults to Qwen. Overridable via JUDGE_MODEL,
+# but it deliberately does NOT fall back to AGENT_LLM_MODEL — that fallback
+# would silently collapse the independence this separation buys.
+#
+# The judge is invoked in JSON-object mode with local Pydantic validation
+# (see eval_runner), NOT Groq strict json_schema: Qwen is a reasoning model
+# and emits a plain JSON object far more reliably than a strict-schema tool
+# call, and validating locally lets a malformed verdict be a caught,
+# non-fatal judge failure rather than an aborted batch.
+JUDGE_MODEL_NAME = os.getenv("JUDGE_MODEL", "qwen/qwen3.6-27b")
 JUDGE_TEMPERATURE = 0.0       # zero, unlike the agents' 0.1 — the judge makes
                               # no tool calls (the reliability reason agents
                               # avoid zero), and scoring should be maximally
