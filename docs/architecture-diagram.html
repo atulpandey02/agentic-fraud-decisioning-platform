@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Fraud Platform · Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --paper:  #0d1117;   /* page + reserved for label masks */
+    --panel:  #161f2a;   /* node fill */
+    --ink:    #dbe4ee;
+    --muted:  #8fa0b3;
+    --accent: #5cc8a5;   /* focal — 2 nodes max */
+    --font-sans:  'Geist', system-ui, sans-serif;
+    --font-serif: 'Instrument Serif', Georgia, serif;
+    --font-mono:  'Geist Mono', ui-monospace, monospace;
+  }
+  body {
+    font-family: var(--font-sans);
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 3rem 2rem;
+  }
+  .frame { max-width: 1180px; width: 100%; }
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 0.5rem;
+  }
+  h1 {
+    font-family: var(--font-serif); font-weight: 400;
+    font-size: clamp(1.6rem, 2.6vw + 0.75rem, 2.2rem);
+    letter-spacing: -0.02em; line-height: 1.12; margin-bottom: 1.4rem;
+  }
+  svg { width: 100%; min-width: 900px; display: block; }
+  .cap { margin-top: 1.1rem; font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+  .cap b { color: var(--ink); font-weight: 500; }
+  .swatch { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <p class="eyebrow">Architecture · Agentic Fraud Decisioning Platform</p>
+  <h1>Stream → decide → govern → automate</h1>
+
+  <svg viewBox="0 0 1168 520" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-labelledby="arch-title arch-desc">
+    <title id="arch-title">Agentic fraud decisioning platform architecture</title>
+    <desc id="arch-desc">Left to right: a Kafka/Spark streaming pipeline writes a Redis/Snowflake
+      feature store; a multi-agent supervisor grounded by Weaviate policy RAG and a Groq LLM makes
+      ALLOW/BLOCK/ESCALATE decisions; governance assigns autonomy tiers; decisions and traces land in
+      Snowflake and feed a guarded NL2SQL BI surface and a natural-language workflow engine that emits
+      to an auditable outbox.</desc>
+
+    <defs>
+      <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="0.9" fill="rgba(219,228,238,0.05)"/>
+      </pattern>
+      <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#8fa0b3"/></marker>
+      <marker id="arrow-acc" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#5cc8a5"/></marker>
+    </defs>
+
+    <rect width="100%" height="100%" fill="#0d1117"/>
+    <rect width="100%" height="100%" fill="url(#dots)"/>
+
+    <!-- ============ ZONES (drawn before arrows + nodes) ============ -->
+    <!-- Zone A -->
+    <rect x="22" y="116" width="204" height="384" rx="8"
+          fill="rgba(219,228,238,0.03)" stroke="rgba(219,228,238,0.10)" stroke-width="0.8"/>
+    <rect x="60" y="120" width="128" height="12" rx="2" fill="#0d1117"/>
+    <text x="124" y="129" text-anchor="middle" font-family="'Geist Mono',monospace"
+          font-size="7" letter-spacing="0.16em" fill="rgba(219,228,238,0.42)">STREAMING · FEATURES</text>
+    <!-- Zone B -->
+    <rect x="254" y="6" width="430" height="364" rx="8"
+          fill="rgba(219,228,238,0.03)" stroke="rgba(219,228,238,0.10)" stroke-width="0.8"/>
+    <rect x="400" y="10" width="138" height="12" rx="2" fill="#0d1117"/>
+    <text x="469" y="19" text-anchor="middle" font-family="'Geist Mono',monospace"
+          font-size="7" letter-spacing="0.16em" fill="rgba(219,228,238,0.42)">AGENTIC DECISIONING</text>
+    <!-- Zone C -->
+    <rect x="714" y="116" width="430" height="384" rx="8"
+          fill="rgba(219,228,238,0.03)" stroke="rgba(219,228,238,0.10)" stroke-width="0.8"/>
+    <rect x="862" y="120" width="134" height="12" rx="2" fill="#0d1117"/>
+    <text x="929" y="129" text-anchor="middle" font-family="'Geist Mono',monospace"
+          font-size="7" letter-spacing="0.16em" fill="rgba(219,228,238,0.42)">DECISIONS · SERVING</text>
+
+    <!-- ============ ARROWS (behind nodes) ============ -->
+    <!-- streaming column, bottom -> up -->
+    <line x1="124" y1="430" x2="124" y2="362" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="124" y1="300" x2="124" y2="212" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- spine, left -> right -->
+    <line x1="208" y1="178" x2="264" y2="178" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="438" y1="178" x2="494" y2="178" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="668" y1="178" x2="724" y2="178" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="898" y1="178" x2="954" y2="178" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- RAG down into supervisor -->
+    <line x1="354" y1="96" x2="354" y2="144" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- LLM up into supervisor (dashed = model call) -->
+    <line x1="354" y1="300" x2="354" y2="212" stroke="#8fa0b3" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+    <!-- decisions -> serving (down) -->
+    <line x1="814" y1="206" x2="814" y2="294" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <line x1="814" y1="356" x2="814" y2="424" stroke="#8fa0b3" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+    <!-- arrow labels -->
+    <text x="366" y="124" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">policy</text>
+    <text x="366" y="262" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">LLM</text>
+    <text x="240" y="170" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">flagged</text>
+    <text x="826" y="258" font-family="'Geist Mono',monospace" font-size="8" letter-spacing="0.06em" fill="#8fa0b3">events</text>
+
+    <!-- ============ NODES ============ -->
+    <!-- helper geometry: w=168 h=56, name y=+24, sub y=+41 -->
+
+    <!-- Zone A -->
+    <g>
+      <rect x="40" y="150" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="124" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Feature store</text>
+      <text x="124" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">Redis · Snowflake</text>
+    </g>
+    <g>
+      <rect x="40" y="300" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="124" y="324" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Spark streaming</text>
+      <text x="124" y="341" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">features · risk score</text>
+    </g>
+    <g>
+      <rect x="40" y="430" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="124" y="454" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Kafka</text>
+      <text x="124" y="471" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">fraud-transactions</text>
+    </g>
+
+    <!-- Zone B -->
+    <g>
+      <rect x="270" y="40" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="354" y="64" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Weaviate</text>
+      <text x="354" y="81" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">policy RAG · hybrid</text>
+    </g>
+    <!-- FOCAL 1: supervisor -->
+    <g>
+      <rect x="270" y="150" width="168" height="56" rx="6" fill="#161f2a" stroke="#5cc8a5" stroke-width="1.5"/>
+      <text x="354" y="173" text-anchor="middle" font-size="12" font-weight="600" fill="#5cc8a5">Multi-agent supervisor</text>
+      <text x="354" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="8.5" fill="#8fa0b3">feature→risk→policy→decision</text>
+    </g>
+    <g>
+      <rect x="270" y="300" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="354" y="324" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Groq LLM</text>
+      <text x="354" y="341" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">gpt-oss-120b</text>
+    </g>
+    <g>
+      <rect x="500" y="150" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="584" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Governance</text>
+      <text x="584" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">autonomy tiers · HITL</text>
+    </g>
+
+    <!-- Zone C -->
+    <!-- FOCAL 2: decisions store -->
+    <g>
+      <rect x="730" y="150" width="168" height="56" rx="6" fill="#161f2a" stroke="#5cc8a5" stroke-width="1.5"/>
+      <text x="814" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#5cc8a5">Snowflake · DECISIONS</text>
+      <text x="814" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">decisions + agent traces</text>
+    </g>
+    <g>
+      <rect x="960" y="150" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="1044" y="174" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Agentic BI</text>
+      <text x="1044" y="191" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">guarded NL2SQL</text>
+    </g>
+    <g>
+      <rect x="730" y="300" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="814" y="324" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Workflow engine</text>
+      <text x="814" y="341" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">plan → check → execute</text>
+    </g>
+    <g>
+      <rect x="730" y="430" width="168" height="56" rx="6" fill="#161f2a" stroke="rgba(219,228,238,0.16)"/>
+      <text x="814" y="454" text-anchor="middle" font-size="12" font-weight="600" fill="#dbe4ee">Outbox</text>
+      <text x="814" y="471" text-anchor="middle" font-family="'Geist Mono',monospace" font-size="9" fill="#8fa0b3">Slack · email (auditable)</text>
+    </g>
+  </svg>
+
+  <p class="cap">
+    Primary flow runs left→right along the spine: <b>feature store → supervisor → governance →
+    decisions → BI</b>. The two <span class="swatch">green</span> nodes are the focal points — the
+    <b>multi-agent supervisor</b> (the decision core) and the <b>Snowflake decisions store</b> (system
+    of record). Dashed = LLM call. Guardrails are enforced in code at two boundaries: the BI surface
+    (SELECT-only AST guard) and the workflow engine (feasibility + deterministic step conditions).
+  </p>
+</div>
+</body>
+</html>
