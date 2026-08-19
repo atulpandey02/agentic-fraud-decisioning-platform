@@ -53,12 +53,36 @@ class PlanStep(BaseModel):
     )
 
 
+class PlannedSchedule(BaseModel):
+    """The schedule as the MODEL proposes it — deliberately lenient so
+    structured-output parsing never fails on a missing field. Strict
+    validation (timezone required, hour required for daily/weekly, real
+    IANA zone) happens in CODE: feasibility.py turns this into a real
+    schedule.Schedule, and a bad proposal becomes a feasibility error,
+    not a hallucinated cron job. Judgment from the model, invariants
+    from code — the same split as everywhere else."""
+    frequency: Optional[str] = Field(default=None, description="hourly | daily | weekly")
+    hour: Optional[int] = Field(default=None, description="hour of day 0-23 (daily/weekly)")
+    minute: int = Field(default=0, description="minute of the hour 0-59")
+    day_of_week: Optional[str] = Field(default=None, description="mon..sun (weekly only)")
+    timezone: Optional[str] = Field(
+        default=None,
+        description="IANA timezone, e.g. 'America/New_York' — REQUIRED for a schedule; "
+                    "infer it from the user's stated zone, never guess a default silently",
+    )
+
+
 class WorkflowPlan(BaseModel):
     goal: str = Field(description="one sentence restating the automation's goal")
     trigger: Optional[str] = Field(
         default=None,
         description="the event type that fires this workflow (e.g. "
                     "'payment.captured'), or null for on-demand only",
+    )
+    schedule: Optional[PlannedSchedule] = Field(
+        default=None,
+        description="set ONLY for a recurring/scheduled request ('every day at "
+                    "10 PM ...'); null otherwise. Code validates and converts it.",
     )
     steps: list[PlanStep] = Field(description="ordered steps; empty if clarification needed")
     needs_clarification: bool = Field(
@@ -98,9 +122,25 @@ HARD RULES:
    `when` is a single comparison evaluated in code; the steps it guards are
    SKIPPED (not run) when it is false. This keeps the IF out of your hands and
    in deterministic code.
+6. DELIVERING A RESULT (Slack/email): NEVER send raw query rows. Always insert
+   a 'format_report' step between the query step and the notify step, then
+   reference its rendered text — Slack uses '$stepN.slack_text', email uses
+   '$stepN.email_subject' and '$stepN.email_body'.
+7. SCHEDULED / RECURRING reports ("every day at 10 PM send #fraud-ops a fraud
+   performance report"):
+   - set the `schedule` object (frequency, hour, minute, timezone). The
+     timezone is REQUIRED — infer it from the user's stated zone; do not
+     silently invent one.
+   - use 'run_report_query' (NOT 'query_decisions') with report='fraud_performance'
+     and window_start='$trigger.window_start', window_end='$trigger.window_end'
+     (the scheduler supplies the window each run — you do not compute dates).
+   - then 'format_report', then the Slack/email step.
+   - leave `trigger` null for a pure schedule (schedules are time-driven, not
+     event-driven).
 
-Set the trigger field if the request is event-driven ("after every payment
-capture ..."), otherwise null."""
+Set the trigger field if the request is EVENT-driven ("after every payment
+capture ..."); set the schedule object if it is TIME-driven ("every day at
+..."); a one-off question with no delivery needs neither."""
 
 
 class Planner:
@@ -109,7 +149,15 @@ class Planner:
 
     def __init__(self, registry: ToolRegistry, llm=None) -> None:
         self._registry = registry
-        self._llm = llm if llm is not None else self._build_llm()
+        # Built LAZILY on the first plan() call: constructing the engine
+        # (registry + scheduler + deterministic promotion) must not require
+        # a Groq key — only ACTUAL planning does. Tests inject a fake llm.
+        self._llm = llm
+
+    def _ensure_llm(self):
+        if self._llm is None:
+            self._llm = self._build_llm()
+        return self._llm
 
     @staticmethod
     def _build_llm():
@@ -135,7 +183,7 @@ class Planner:
                 f"\n\nTriggering event payload (reference its fields as "
                 f"$trigger.<field>): {trigger_context}"
             )
-        plan: WorkflowPlan = self._llm.invoke([
+        plan: WorkflowPlan = self._ensure_llm().invoke([
             SystemMessage(content=PLANNER_SYSTEM_PROMPT),
             HumanMessage(content=human),
         ])

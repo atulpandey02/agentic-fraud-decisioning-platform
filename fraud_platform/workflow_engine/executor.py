@@ -109,13 +109,19 @@ class Executor:
 
     # ---------------------------------------------------------- execution
     def execute(self, workflow_id: str, plan: WorkflowPlan,
-                trigger_payload: Optional[dict] = None) -> RunResult:
+                trigger_payload: Optional[dict] = None,
+                scheduled_run_key: Optional[str] = None) -> RunResult:
         """Run a workflow's plan as a fresh run. The workflow must be in a
         state from which RUNNING is legal (READY). Transitions it to RUNNING,
-        then to COMPLETED or FAILED."""
+        then to COMPLETED or FAILED.
+
+        `scheduled_run_key` stamps the run with its (workflow, fire-time)
+        identity. It is reserved FIRST — before any state change — so a
+        duplicate scheduled fire is rejected by the unique index (raising
+        sqlite3.IntegrityError) without half-running or double-sending."""
         trigger = trigger_payload or {}
+        run_id = self._store.start_run(workflow_id, scheduled_run_key)
         self._store.transition(workflow_id, WorkflowState.RUNNING)
-        run_id = self._store.start_run(workflow_id)
         results: dict[int, object] = {}
         skipped: set[int] = set()
         outcomes: list[StepOutcome] = []

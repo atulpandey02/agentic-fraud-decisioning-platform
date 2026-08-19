@@ -76,6 +76,7 @@ workflow = [
     "fastapi>=0.110,<1",
     "uvicorn>=0.29,<1",
     "apscheduler>=3.10,<4",
+    "tzdata>=2024.1",           # IANA zones for zoneinfo on minimal Linux/CI
 ]
 dev = [
     "pytest==8.3.4",

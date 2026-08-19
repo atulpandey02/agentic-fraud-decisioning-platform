@@ -19,14 +19,20 @@
 from __future__ import annotations
 
 import logging
+from typing import Callable, Optional
 
 from pydantic import BaseModel, Field
 
-from . import config
 from .connectors import OutboxWriter, make_email_send, make_slack_send
 from .registry import ANALYZE, NOTIFY, READ_DATA, ToolRegistry, ToolSpec
 
 logger = logging.getLogger(__name__)
+
+# Resolves a stored query-template id -> its validated SQL. Injected so
+# run_report_query can replay an ad-hoc persisted template without this
+# module importing the persistence layer. Named catalog reports need no
+# resolver (their SQL lives in reports_catalog).
+TemplateResolver = Callable[[str], Optional[str]]
 
 
 # -------------------------------------------------------------
@@ -44,6 +50,25 @@ class CountArgs(BaseModel):
     user_id: str = Field(description="the user's unique identifier")
     decision: str = Field(description="one of ALLOW, BLOCK, ESCALATE")
     hours: int = Field(default=24, ge=1, le=720, description="look-back window in hours")
+
+
+class ReportRunArgs(BaseModel):
+    report: str = Field(description="a named catalog report (e.g. 'fraud_performance') "
+                                    "or a persisted query-template id")
+    window_start: Optional[str] = Field(
+        default=None, description="ISO datetime, start of the report window "
+                                  "(usually '$trigger.window_start'); omit for a "
+                                  "one-shot stored query with no time window")
+    window_end: Optional[str] = Field(
+        default=None, description="ISO datetime, end of the report window "
+                                  "(usually '$trigger.window_end'); omit for a "
+                                  "one-shot stored query with no time window")
+
+
+class FormatReportArgs(BaseModel):
+    title: str = Field(description="the report's title/heading")
+    data: dict = Field(description="the previous query step's result "
+                                   "(usually '$step_N') — its columns/rows/sql")
 
 
 class SlackArgs(BaseModel):
@@ -81,6 +106,13 @@ def _query_decisions(question: str) -> dict:
     return {"sql": gq.sql, "columns": cols, "rows": rows[:100]}
 
 
+def _format_report(title: str, data: dict) -> dict:
+    """Deterministic report formatting — no LLM, no I/O. Delegates to the
+    report module so the same numbers always render the same way."""
+    from .report import format_report
+    return format_report(title, data)
+
+
 def _count_recent_decisions(user_id: str, decision: str, hours: int = 24) -> dict:
     """Deterministic, parameterized COUNT over FACT_DECISIONS — no LLM.
     Connects under the least-privilege agent role, reads DECISIONS."""
@@ -113,14 +145,37 @@ def _count_recent_decisions(user_id: str, decision: str, hours: int = 24) -> dic
         conn.close()
 
 
+def make_run_report_query(template_resolver: Optional[TemplateResolver] = None):
+    """Build the `run_report_query(report, window_start, window_end)` tool.
+    It resolves `report` to validated SQL — a named catalog report first,
+    then an injected persisted template — and hands it to the catalog's
+    validate -> substitute-window -> re-validate -> execute pipeline. No
+    LLM runs here: recurring reports replay stored SQL, never regenerate it."""
+
+    def run_report_query(report: str, window_start: Optional[str] = None,
+                         window_end: Optional[str] = None) -> dict:
+        from .reports_catalog import REPORT_CATALOG, run_validated_report
+        if report in REPORT_CATALOG:
+            sql = REPORT_CATALOG[report][1]
+        elif template_resolver is not None and (resolved := template_resolver(report)):
+            sql = resolved
+        else:
+            raise KeyError(f"unknown report {report!r} — not a catalog report or a stored template")
+        return run_validated_report(sql, window_start, window_end)
+
+    return run_report_query
+
+
 # -------------------------------------------------------------
 # REGISTRY ASSEMBLY
 # -------------------------------------------------------------
-def build_default_registry(outbox_writer: OutboxWriter) -> ToolRegistry:
+def build_default_registry(outbox_writer: OutboxWriter,
+                           template_resolver: Optional[TemplateResolver] = None) -> ToolRegistry:
     """The workflow engine's default tool catalog. `outbox_writer` is
     injected so NOTIFY connectors persist to the workflow store the
     caller owns (SQLite here; Postgres later) without this module
-    importing the persistence layer."""
+    importing the persistence layer. `template_resolver` (optional) lets
+    run_report_query replay ad-hoc persisted templates by id."""
     r = ToolRegistry()
 
     r.register(ToolSpec(
@@ -151,6 +206,25 @@ def build_default_registry(outbox_writer: OutboxWriter) -> ToolRegistry:
                     "hours. No LLM. PREFER this over query_decisions for any "
                     "countable trigger condition.",
         args_schema=CountArgs, category=ANALYZE, execute=_count_recent_decisions,
+    ))
+    r.register(ToolSpec(
+        name="run_report_query",
+        description="Run a NAMED, parameterized report ('fraud_performance' = "
+                    "reviewed/BLOCK/ESCALATE/fraud-rate/top-pattern) over a time "
+                    "window, using validated SQL that is NOT regenerated per run. "
+                    "USE THIS (not query_decisions) for recurring/scheduled reports; "
+                    "pass window_start/window_end as $trigger.window_start / "
+                    "$trigger.window_end so the scheduler supplies the period.",
+        args_schema=ReportRunArgs, category=READ_DATA,
+        execute=make_run_report_query(template_resolver),
+    ))
+    r.register(ToolSpec(
+        name="format_report",
+        description="Turn a query/report result into a structured, human-readable "
+                    "report (title, summary, metrics) and pre-render a compact Slack "
+                    "message and a detailed email body. ALWAYS put this between a "
+                    "query step and a Slack/email step — never send raw SQL rows.",
+        args_schema=FormatReportArgs, category=ANALYZE, execute=_format_report,
     ))
     r.register(ToolSpec(
         name="slack_send_message",

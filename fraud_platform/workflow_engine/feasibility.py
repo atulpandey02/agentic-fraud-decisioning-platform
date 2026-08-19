@@ -45,8 +45,10 @@ class FeasibilityReport:
 
 def _placeholder(annotation) -> object:
     """A type-appropriate stand-in for a '$ref' arg, so the concrete
-    fields of a step can still be schema-validated."""
-    return {str: "x", int: 0, float: 0.0, bool: False}.get(annotation, "x")
+    fields of a step can still be schema-validated. dict/list are here
+    because a '$stepN' ref often stands in for a whole prior result
+    (e.g. format_report's `data: dict`)."""
+    return {str: "x", int: 0, float: 0.0, bool: False, dict: {}, list: []}.get(annotation, "x")
 
 
 def _check_ref(value: str, step_number: int, valid_steps: set[int], errors: list[str]) -> None:
@@ -132,4 +134,24 @@ def check_plan(plan: WorkflowPlan, registry: ToolRegistry) -> FeasibilityReport:
             else:
                 _check_ref(cond.ref, step.step_number, step_numbers, errors)
 
+    # Validate the SCHEDULE in code — the model only PROPOSES one. Building a
+    # real schedule.Schedule enforces the invariants (timezone required and a
+    # valid IANA zone, hour required for daily/weekly): a schedule the model
+    # got wrong becomes a feasibility error here, never a live cron job. This
+    # is where "the LLM interprets '10 PM', code validates it" is enforced.
+    if plan.schedule is not None:
+        _check_schedule(plan.schedule, errors)
+
     return FeasibilityReport(ok=not errors, errors=errors, requires_approval=requires_approval)
+
+
+def _check_schedule(planned, errors: list[str]) -> None:
+    from pydantic import ValidationError as _VErr
+
+    from .schedule import Schedule
+    try:
+        Schedule(**planned.model_dump(exclude_none=True))
+    except _VErr as e:
+        first = e.errors()[0]
+        loc = ".".join(str(x) for x in first["loc"]) or "schedule"
+        errors.append(f"schedule invalid ({loc}: {first['msg']})")

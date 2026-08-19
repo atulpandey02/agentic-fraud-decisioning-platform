@@ -82,10 +82,13 @@ class TestDefaultRegistry:
         names = r.names()
         assert names == {
             "get_transaction_features", "get_user_history", "query_decisions",
-            "count_recent_decisions", "slack_send_message", "email_send",
+            "count_recent_decisions", "run_report_query", "format_report",
+            "slack_send_message", "email_send",
         }
         # categories are correct and within the allowed set
         assert r.get("count_recent_decisions").category == ANALYZE
+        assert r.get("run_report_query").category == READ_DATA
+        assert r.get("format_report").category == ANALYZE
         assert r.get("get_user_history").category == READ_DATA
         assert r.get("slack_send_message").category == NOTIFY
         # NOTIFY connectors are not read-only; none require approval by default
