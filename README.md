@@ -205,6 +205,15 @@ location.**
    python -m fraud_platform.workflow_engine.run_demo --scheduled --mock
    ```
 
+![Workflow engine — natural language in, audited actions out](docs/workflow-engine.png)
+
+*The natural-language workflow engine end to end: the **planner** (the one LLM step,
+dashed) drafts a plan; **code** checks feasibility, fires on a schedule or event,
+enforces SELECT-only SQL and deterministic conditions, runs only registered tools, and
+delivers to an auditable outbox — and a request that names no real tool is **rejected**
+before anything runs. Interactive version:
+[`docs/workflow-engine-diagram.html`](docs/workflow-engine-diagram.html).*
+
 ---
 
 ## Safety & guardrails
